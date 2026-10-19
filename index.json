@@ -1,0 +1,303 @@
+{
+  "version": 1,
+  "name": "Familienhub Store",
+  "entries": [
+    {
+      "type": "theme",
+      "id": "candy-pop",
+      "name": "Candy Pop",
+      "summary": {
+        "en": "Bright pink and sky blue, very round cards with hard shadows, pastel gradient.",
+        "de": "Knalliges Pink und Himmelblau, sehr runde Karten mit harten Schatten, Pastellverlauf."
+      },
+      "description": {
+        "en": "Bright pink and sky blue, very round cards with hard shadows, pastel gradient. Light and dark variant included.",
+        "de": "Knalliges Pink und Himmelblau, sehr runde Karten mit harten Schatten, Pastellverlauf. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "candy-pop",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/candy-pop/1.png",
+        "screenshots/candy-pop/2.png"
+      ],
+      "tags": [
+        "theme",
+        "colourful",
+        "playful"
+      ]
+    },
+    {
+      "type": "theme",
+      "id": "cyberpunk",
+      "name": "Cyberpunk",
+      "summary": {
+        "en": "Neon yellow and cyan on near-black, hard edges, terminal fonts.",
+        "de": "Neongelb und Cyan auf Fast-Schwarz, harte Kanten, Terminal-Schriften."
+      },
+      "description": {
+        "en": "Neon yellow and cyan on near-black, hard edges, terminal fonts. Light and dark variant included.",
+        "de": "Neongelb und Cyan auf Fast-Schwarz, harte Kanten, Terminal-Schriften. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "cyberpunk",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/cyberpunk/1.png",
+        "screenshots/cyberpunk/2.png"
+      ],
+      "tags": [
+        "theme",
+        "neon",
+        "dark"
+      ]
+    },
+    {
+      "type": "theme",
+      "id": "e-ink-reader",
+      "name": "E-Ink Reader",
+      "summary": {
+        "en": "Calm greyscale like an e-reader, list layout, minimal borders.",
+        "de": "Ruhige Graustufen wie ein E-Reader, Listenlayout, minimale Ränder."
+      },
+      "description": {
+        "en": "Calm greyscale like an e-reader, list layout, minimal borders. Light and dark variant included.",
+        "de": "Ruhige Graustufen wie ein E-Reader, Listenlayout, minimale Ränder. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "e-ink-reader",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/e-ink-reader/1.png",
+        "screenshots/e-ink-reader/2.png"
+      ],
+      "tags": [
+        "theme",
+        "minimal",
+        "greyscale"
+      ]
+    },
+    {
+      "type": "theme",
+      "id": "gameboy-pocket",
+      "name": "8-Bit Gameboy",
+      "summary": {
+        "en": "Four greens of the original handheld; dark variant as a green phosphor terminal. Pixel titles.",
+        "de": "Die vier Grüntöne des Original-Handhelds; dunkle Variante als grünes Phosphor-Terminal. Pixel-Titel."
+      },
+      "description": {
+        "en": "Four greens of the original handheld; dark variant as a green phosphor terminal. Pixel titles. Light and dark variant included.",
+        "de": "Die vier Grüntöne des Original-Handhelds; dunkle Variante als grünes Phosphor-Terminal. Pixel-Titel. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "gameboy-pocket",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/gameboy-pocket/1.png",
+        "screenshots/gameboy-pocket/2.png"
+      ],
+      "tags": [
+        "theme",
+        "retro",
+        "pixel"
+      ]
+    },
+    {
+      "type": "theme",
+      "id": "matcha-latte",
+      "name": "Matcha Zen",
+      "summary": {
+        "en": "Soft greens and latte tones, glass cards with a gentle glow.",
+        "de": "Sanfte Grün- und Latte-Töne, Glaskarten mit leichtem Schimmer."
+      },
+      "description": {
+        "en": "Soft greens and latte tones, glass cards with a gentle glow. Light and dark variant included.",
+        "de": "Sanfte Grün- und Latte-Töne, Glaskarten mit leichtem Schimmer. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "matcha-latte",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/matcha-latte/1.png",
+        "screenshots/matcha-latte/2.png"
+      ],
+      "tags": [
+        "theme",
+        "calm",
+        "glass"
+      ]
+    },
+    {
+      "type": "theme",
+      "id": "nordic-fjord",
+      "name": "Nordic Fjord",
+      "summary": {
+        "en": "Glacier blue and violet glow, glass cards.",
+        "de": "Gletscherblau und violettes Leuchten, Glaskarten."
+      },
+      "description": {
+        "en": "Glacier blue and violet glow, glass cards. Light and dark variant included.",
+        "de": "Gletscherblau und violettes Leuchten, Glaskarten. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "nordic-fjord",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/nordic-fjord/1.png",
+        "screenshots/nordic-fjord/2.png"
+      ],
+      "tags": [
+        "theme",
+        "cool",
+        "glass"
+      ]
+    },
+    {
+      "type": "theme",
+      "id": "pitch-black-oled",
+      "name": "Midnight OLED",
+      "summary": {
+        "en": "True black for OLED screens with emerald and indigo accents; light variant included.",
+        "de": "Echtes Schwarz für OLED-Displays mit Smaragd- und Indigo-Akzenten; mit heller Variante."
+      },
+      "description": {
+        "en": "True black for OLED screens with emerald and indigo accents; light variant included. Light and dark variant included.",
+        "de": "Echtes Schwarz für OLED-Displays mit Smaragd- und Indigo-Akzenten; mit heller Variante. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "pitch-black-oled",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/pitch-black-oled/1.png",
+        "screenshots/pitch-black-oled/2.png"
+      ],
+      "tags": [
+        "theme",
+        "dark",
+        "oled"
+      ]
+    },
+    {
+      "type": "theme",
+      "id": "praezision",
+      "name": "Präzision",
+      "summary": {
+        "en": "Technical measurement-report aesthetic: warm paper, signal red-orange, square panels, fine lines and mono labels.",
+        "de": "Technische Messprotokoll-Ästhetik: warmes Papier, Signal-Rotorange, eckige Panels, feine Linien und Mono-Labels."
+      },
+      "description": {
+        "en": "Technical measurement-report aesthetic: warm paper, signal red-orange, square panels, fine lines and mono labels. Light and dark variant included.",
+        "de": "Technische Messprotokoll-Ästhetik: warmes Papier, Signal-Rotorange, eckige Panels, feine Linien und Mono-Labels. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "praezision",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/praezision/1.png",
+        "screenshots/praezision/2.png"
+      ],
+      "tags": [
+        "theme",
+        "technical",
+        "paper"
+      ]
+    },
+    {
+      "type": "theme",
+      "id": "retro-synthwave",
+      "name": "Retro Synthwave",
+      "summary": {
+        "en": "Hot pink and cyan on deep purple, 80s neon glow.",
+        "de": "Pink und Cyan auf tiefem Lila, 80er-Neonleuchten."
+      },
+      "description": {
+        "en": "Hot pink and cyan on deep purple, 80s neon glow. Light and dark variant included.",
+        "de": "Pink und Cyan auf tiefem Lila, 80er-Neonleuchten. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "retro-synthwave",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/retro-synthwave/1.png",
+        "screenshots/retro-synthwave/2.png"
+      ],
+      "tags": [
+        "theme",
+        "retro",
+        "neon"
+      ]
+    },
+    {
+      "type": "theme",
+      "id": "solarized-paper",
+      "name": "Solarized Paper",
+      "summary": {
+        "en": "Warm paper tones with forest green and brown, round cards.",
+        "de": "Warme Papiertöne mit Waldgrün und Braun, runde Karten."
+      },
+      "description": {
+        "en": "Warm paper tones with forest green and brown, round cards. Light and dark variant included.",
+        "de": "Warme Papiertöne mit Waldgrün und Braun, runde Karten. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "solarized-paper",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/solarized-paper/1.png",
+        "screenshots/solarized-paper/2.png"
+      ],
+      "tags": [
+        "theme",
+        "warm",
+        "paper"
+      ]
+    },
+    {
+      "type": "theme",
+      "id": "swiss-grid",
+      "name": "Swiss Bauhaus",
+      "summary": {
+        "en": "Bauhaus/Swiss style: red, navy and yellow, square cards, heavy uppercase titles.",
+        "de": "Bauhaus/Schweizer Stil: Rot, Marineblau und Gelb, eckige Karten, kräftige Großbuchstaben-Titel."
+      },
+      "description": {
+        "en": "Bauhaus/Swiss style: red, navy and yellow, square cards, heavy uppercase titles. Light and dark variant included.",
+        "de": "Bauhaus/Schweizer Stil: Rot, Marineblau und Gelb, eckige Karten, kräftige Großbuchstaben-Titel. Mit heller und dunkler Variante."
+      },
+      "author": "Familienhub theme gallery",
+      "repo": "https://github.com/Brottuetchen/familienhub-themes",
+      "path": "swiss-grid",
+      "sha": "f65a5d4b5bd5e1441e815ff8267ea18b563d7914",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/swiss-grid/1.png",
+        "screenshots/swiss-grid/2.png"
+      ],
+      "tags": [
+        "theme",
+        "bauhaus",
+        "bold"
+      ]
+    }
+  ]
+}
