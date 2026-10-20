@@ -1,0 +1,63 @@
+{
+  "id": "webuntis",
+  "name": {"de": "WebUntis", "en": "WebUntis"},
+  "version": "1.0.0",
+  "description": {
+    "de": "Füllt den Stundenplan der Kinder automatisch aus WebUntis und meldet Ausfall und Vertretung per Push.",
+    "en": "Fills the children's timetable from WebUntis automatically and pushes cancellations and substitutions."
+  },
+  "author": "Familienhub",
+  "homepage": "https://github.com/Brottuetchen/familienhub-store/tree/main/plugins/webuntis",
+  "license": "MIT",
+  "min_hub_version": "1.0.0-beta.3",
+  "package": ".",
+  "entry_point": "fh_plugin_webuntis.plugin:WebUntisPlugin",
+  "settings": [
+    {
+      "key": "WEBUNTIS_SERVER",
+      "label": {"de": "WebUntis-Server", "en": "WebUntis server"},
+      "help": {"de": "Nur der Servername aus der Adresse des WebUntis-Logins, ohne https://.", "en": "Only the server name from your WebUntis login address, without https://."},
+      "type": "text",
+      "required": true,
+      "example": "xyz.webuntis.com"
+    },
+    {
+      "key": "WEBUNTIS_SCHOOL",
+      "label": {"de": "Schulname (Login)", "en": "School (login name)"},
+      "help": {"de": "Steht in der Adresse nach „school=“ bzw. nach „/WebUntis/?school=“.", "en": "The part after “school=” in the login address."},
+      "type": "text",
+      "required": true,
+      "example": "my-school-city"
+    },
+    {
+      "key": "WEBUNTIS_USERNAME",
+      "label": {"de": "Benutzername", "en": "Username"},
+      "help": {"de": "Elternzugang oder Schülerzugang der Schule.", "en": "Parent or student account of the school."},
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "WEBUNTIS_PASSWORD",
+      "label": {"de": "Passwort", "en": "Password"},
+      "type": "password",
+      "required": true
+    },
+    {
+      "key": "WEBUNTIS_NOTIFY",
+      "label": {"de": "Push bei Ausfall und Vertretung", "en": "Push on cancellations and substitutions"},
+      "type": "bool",
+      "required": false,
+      "default": true
+    },
+    {
+      "key": "WEBUNTIS_NOTIFY_DAYS",
+      "label": {"de": "Tage im Voraus melden", "en": "Days ahead to report"},
+      "help": {"de": "1 = heute und morgen, 0 = nur heute (höchstens 7).", "en": "1 = today and tomorrow, 0 = today only (at most 7)."},
+      "type": "number",
+      "required": false,
+      "default": 1
+    }
+  ],
+  "hosts": ["webuntis.com"],
+  "capabilities": ["timetable"]
+}

@@ -1,0 +1,21 @@
+{
+  "type": "plugin",
+  "id": "webuntis",
+  "name": {"de": "WebUntis", "en": "WebUntis"},
+  "summary": {
+    "de": "Stundenplan aus WebUntis, mit Ausfall und Vertretung per Push",
+    "en": "Timetable from WebUntis, with cancellations and substitutions by push"
+  },
+  "description": {
+    "de": "Füllt den Stundenplan der Kinder automatisch aus WebUntis (Eltern- oder Schülerzugang der Schule): Fächer, Räume, Lehrkräfte, Hinweise, Ausfall und Vertretung. Alle 15 Minuten (06–22 Uhr) meldet das Plugin neue Ausfälle und Vertretungen per Push an Eltern und Kind, z. B. „Mia: 3.–4. Stunde Mathe ausgefallen morgen“. Die Daten bleiben im Hub, geschrieben wird nichts in WebUntis. Verbindungstest eingebaut. Noch nicht an einer echten Schule getestet.",
+    "en": "Fills the children's timetable from WebUntis automatically (parent or student account of the school): subjects, rooms, teachers, notes, cancellations and substitutions. Every 15 minutes (06:00-22:00) it pushes new cancellations and substitutions to the parents and the child, e.g. \"Mia: 3rd-4th period Maths cancelled tomorrow\". Data stays in your hub, nothing is written to WebUntis. Includes a connection test. Not yet tested against a real school."
+  },
+  "author": "Familienhub",
+  "repo": "https://github.com/Brottuetchen/familienhub-store",
+  "path": "plugins/webuntis",
+  "sha": "TBD",
+  "version": "1.0.0",
+  "screenshots": ["screenshots/webuntis/1.png", "screenshots/webuntis/2.png"],
+  "tags": ["school", "timetable", "webuntis", "notifications"],
+  "min_hub_version": "1.0.0-beta.3"
+}
