@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "familienhub-plugin-immich"
+version = "1.0.0"
+description = "Familienhub plugin: photos from this day in earlier years, from Immich"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+# Only what the hub does not ship (fastapi, httpx, pydantic ... come from the hub).
+dependencies = []
+
+[project.entry-points."familienhub.plugins"]
+immich = "fh_plugin_immich.plugin:ImmichPlugin"
+
+[tool.setuptools.packages.find]
+include = ["fh_plugin_immich*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
