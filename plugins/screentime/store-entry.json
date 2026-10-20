@@ -1,0 +1,21 @@
+{
+  "type": "plugin",
+  "id": "screentime",
+  "name": {"de": "Medienzeit als Belohnung", "en": "Screen time as a reward"},
+  "summary": {
+    "de": "Sterne gegen Internetzeit: Gerät des Kindes für N Minuten freischalten, danach automatisch sperren.",
+    "en": "Stars for internet time: unlock a child's device for N minutes, then block it again automatically."
+  },
+  "description": {
+    "de": "Kinder lösen Sterne gegen Medienzeit ein. Bestätigt ein Elternteil die Belohnung, schaltet das Plugin das Gerät für die eingestellten Minuten frei und sperrt es danach wieder, auch nach einem Neustart des Hubs. Funktioniert mit Fritz!Box (TR-064), AdGuard Home oder Pi-hole v6. Mit Verbindungstest, Hinweis an das Kind kurz vor Ende, Meldung an die Eltern, falls das Sperren nicht klappt, und einer Heute-Karte mit den freigeschalteten Geräten. Die Geräte müssen einmal im System gesperrt werden; DNS-Sperren lassen sich umgehen, siehe README.",
+    "en": "Kids redeem stars for media time. When a parent approves the reward, the plugin unlocks the device for the chosen minutes and blocks it again afterwards, also after a hub restart. Works with a Fritz!Box (TR-064), AdGuard Home or Pi-hole v6. Includes a connection test, a heads-up to the child shortly before the end, a notice to the parents if blocking fails, and a Today card listing unlocked devices. Devices must be blocked once in your system; DNS blocking can be bypassed, see the README."
+  },
+  "author": "Familienhub",
+  "repo": "https://github.com/Brottuetchen/familienhub-store",
+  "path": "plugins/screentime",
+  "sha": "TBD",
+  "version": "1.0.0",
+  "screenshots": ["screenshots/screentime/1.png", "screenshots/screentime/2.png"],
+  "tags": ["kids", "stars", "screen time", "fritzbox", "adguard", "pihole", "parental control"],
+  "min_hub_version": "1.0.0-beta.3"
+}

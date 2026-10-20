@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "familienhub-plugin-screentime"
+version = "1.0.0"
+description = "Screen time as a reward for Familienhub: unlock a child's internet access for N minutes (Fritz!Box, AdGuard Home, Pi-hole)"
+requires-python = ">=3.12"
+# Only what the hub does not ship: httpx comes from the hub.
+dependencies = []
+
+[project.entry-points."familienhub.plugins"]
+screentime = "fh_plugin_screentime.plugin:ScreentimePlugin"
+
+[tool.setuptools.packages.find]
+include = ["fh_plugin_screentime*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
