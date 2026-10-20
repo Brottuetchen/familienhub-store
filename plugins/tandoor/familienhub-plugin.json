@@ -1,0 +1,34 @@
+{
+  "id": "tandoor",
+  "name": {"de": "Tandoor Rezepte", "en": "Tandoor Recipes"},
+  "version": "1.0.0",
+  "description": {
+    "de": "Rezepte aus Ihrem eigenen Tandoor-Server suchen, ansehen, einplanen und die Zutaten auf die Einkaufsliste setzen. Verbindet sich nur mit der Adresse, die Sie eintragen.",
+    "en": "Search, view and plan recipes from your own Tandoor server and put the ingredients on the shopping list. Only contacts the address you enter."
+  },
+  "author": "Familienhub",
+  "homepage": "https://github.com/Brottuetchen/familienhub-store/tree/main/plugins/tandoor",
+  "license": "MIT",
+  "min_hub_version": "1.0.0-beta.3",
+  "package": ".",
+  "entry_point": "fh_plugin_tandoor.plugin:TandoorPlugin",
+  "settings": [
+    {
+      "key": "TANDOOR_URL",
+      "label": {"de": "Adresse von Tandoor", "en": "Tandoor address"},
+      "help": {"de": "So erreicht der Hub Ihren Tandoor-Server, ohne /api am Ende.", "en": "How the hub reaches your Tandoor server, without /api at the end."},
+      "type": "url",
+      "required": true,
+      "example": "http://tandoor.lan:8080"
+    },
+    {
+      "key": "TANDOOR_TOKEN",
+      "label": {"de": "API-Token", "en": "API token"},
+      "help": {"de": "In Tandoor unter Einstellungen → API erstellen (Lese-Zugriff genügt).", "en": "Create it in Tandoor under Settings → API (read access is enough)."},
+      "type": "password",
+      "required": true
+    }
+  ],
+  "hosts": [],
+  "capabilities": ["meal_planning"]
+}

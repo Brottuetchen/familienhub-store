@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "familienhub-plugin-tandoor"
+version = "1.0.0"
+description = "Tandoor Recipes as a recipe source for Familienhub"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.entry-points."familienhub.plugins"]
+tandoor = "fh_plugin_tandoor.plugin:TandoorPlugin"
+
+[tool.setuptools.packages.find]
+include = ["fh_plugin_tandoor*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,0 +1,21 @@
+{
+  "type": "plugin",
+  "id": "tandoor",
+  "name": {"de": "Tandoor Rezepte", "en": "Tandoor Recipes"},
+  "summary": {
+    "de": "Rezepte aus Ihrem Tandoor-Server suchen, ansehen, einplanen und einkaufen.",
+    "en": "Search, view and plan recipes from your Tandoor server and shop for them."
+  },
+  "description": {
+    "de": "Bindet Ihren eigenen Tandoor-Recipes-Server als Rezeptquelle ein: erscheint in der App als \"Rezept aus Tandoor\" mit Suche, Schnellansicht (Bild, Portionen, Arbeits- und Wartezeit, Zutaten, Schritte), Einplanen auf einen Tag und Zutaten auf die Einkaufsliste. Bilder laufen über den Hub, der Token verlässt ihn nie. Liest nur, schreibt nichts nach Tandoor. Verbindet sich ausschließlich mit der Adresse, die Sie eintragen. Den API-Token legen Sie in Tandoor unter Einstellungen → API an.",
+    "en": "Connects your own Tandoor Recipes server as a recipe source: it appears in the app as \"Recipe from Tandoor\" with search, quick view (picture, servings, working and waiting time, ingredients, steps), planning on a day and ingredients to the shopping list. Pictures go through the hub and the token never leaves it. Read-only: nothing is written to Tandoor. Only contacts the address you enter. Create the API token in Tandoor under Settings → API."
+  },
+  "author": "Familienhub",
+  "repo": "https://github.com/Brottuetchen/familienhub-store",
+  "path": "plugins/tandoor",
+  "sha": "TBD",
+  "version": "1.0.0",
+  "screenshots": ["screenshots/tandoor/1.png", "screenshots/tandoor/2.png"],
+  "tags": ["recipes", "meal planning", "tandoor", "cooking"],
+  "min_hub_version": "1.0.0-beta.3"
+}
