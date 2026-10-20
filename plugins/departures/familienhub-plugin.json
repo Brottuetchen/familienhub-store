@@ -1,0 +1,108 @@
+{
+  "id": "departures",
+  "name": {"de": "Abfahrten an deiner Haltestelle", "en": "Departures at your stop"},
+  "version": "1.0.0",
+  "description": {
+    "de": "Zeigt die nächsten Busse und Bahnen deiner Haltestelle auf „Heute“, z. B. für den Schulweg. Daten von einer transport.rest-Instanz (HAFAS).",
+    "en": "Shows the next buses and trains from your stop on Today, e.g. for the school run. Data from a transport.rest (HAFAS) instance."
+  },
+  "author": "Familienhub",
+  "homepage": "https://github.com/Brottuetchen/familienhub-store/tree/main/plugins/departures",
+  "license": "MIT",
+  "min_hub_version": "1.0.0-beta.3",
+  "package": ".",
+  "entry_point": "fh_plugin_departures.plugin:DeparturesPlugin",
+  "settings": [
+    {
+      "key": "DEPARTURES_STOP",
+      "label": {"de": "Haltestelle (ID)", "en": "Stop (ID)"},
+      "help": {
+        "de": "Die Haltestellen-ID der transport.rest-Instanz, z. B. 8000105. Ein Name funktioniert auch, die Verbindungsprüfung zeigt dir dann die ID dazu (siehe README).",
+        "en": "The stop ID on the transport.rest instance, e.g. 8000105. A name works too; the connection test then shows you the matching ID (see README)."
+      },
+      "type": "text",
+      "required": true,
+      "example": "8000105"
+    },
+    {
+      "key": "DEPARTURES_BASE_URL",
+      "label": {"de": "transport.rest-Adresse", "en": "transport.rest address"},
+      "help": {
+        "de": "Andere Instanzen gehen auch, z. B. https://v6.vbb.transport.rest. Der Hub sperrt keine Hosts, der Host muss nur von deinem Server erreichbar sein.",
+        "en": "Other instances work too, e.g. https://v6.vbb.transport.rest. The hub does not block hosts; the host only has to be reachable from your server."
+      },
+      "type": "url",
+      "required": false,
+      "default": "https://v6.db.transport.rest",
+      "example": "https://v6.db.transport.rest"
+    },
+    {
+      "key": "DEPARTURES_LINES",
+      "label": {"de": "Nur diese Linien", "en": "Only these lines"},
+      "help": {
+        "de": "Optional, durch Komma getrennt, wie auf der Karte angezeigt, z. B. Bus 12, 14. Leer = alle.",
+        "en": "Optional, comma separated, as shown on the card, e.g. Bus 12, 14. Empty = all."
+      },
+      "type": "text",
+      "required": false,
+      "example": "Bus 12, Bus 14"
+    },
+    {
+      "key": "DEPARTURES_DIRECTIONS",
+      "label": {"de": "Nur diese Richtungen", "en": "Only these directions"},
+      "help": {
+        "de": "Optional, durch Komma getrennt. Es genügt ein Teil des Zielnamens, Groß-/Kleinschreibung egal. Leer = alle.",
+        "en": "Optional, comma separated. Part of the destination name is enough, case does not matter. Empty = all."
+      },
+      "type": "text",
+      "required": false,
+      "example": "Schulzentrum"
+    },
+    {
+      "key": "DEPARTURES_MAX",
+      "label": {"de": "Anzahl Abfahrten", "en": "Number of departures"},
+      "help": {"de": "1 bis 6, Standard 4.", "en": "1 to 6, default 4."},
+      "type": "number",
+      "required": false,
+      "default": 4
+    },
+    {
+      "key": "DEPARTURES_WALK_MINUTES",
+      "label": {"de": "Fußweg zur Haltestelle (Minuten)", "en": "Walking time to the stop (minutes)"},
+      "help": {
+        "de": "0 = aus. Sonst werden nicht erreichbare Abfahrten ausgeblendet und „Losgehen in X Min.“ angezeigt.",
+        "en": "0 = off. Otherwise departures you cannot reach are hidden and \"leave in X min\" is shown."
+      },
+      "type": "number",
+      "required": false,
+      "default": 0
+    },
+    {
+      "key": "DEPARTURES_SHOW_FROM",
+      "label": {"de": "Anzeigen ab (HH:MM)", "en": "Show from (HH:MM)"},
+      "help": {
+        "de": "Optional. Zusammen mit „bis“ nur in diesem Zeitfenster anzeigen, z. B. 06:30 bis 08:30.",
+        "en": "Optional. Together with \"until\", show the card only in this window, e.g. 06:30 to 08:30."
+      },
+      "type": "text",
+      "required": false,
+      "example": "06:30"
+    },
+    {
+      "key": "DEPARTURES_SHOW_UNTIL",
+      "label": {"de": "Anzeigen bis (HH:MM)", "en": "Show until (HH:MM)"},
+      "type": "text",
+      "required": false,
+      "example": "08:30"
+    },
+    {
+      "key": "DEPARTURES_WEEKDAYS_ONLY",
+      "label": {"de": "Nur Montag bis Freitag", "en": "Monday to Friday only"},
+      "type": "bool",
+      "required": false,
+      "default": false
+    }
+  ],
+  "hosts": ["v6.db.transport.rest", "v6.vbb.transport.rest", "v6.bvg.transport.rest"],
+  "capabilities": []
+}
