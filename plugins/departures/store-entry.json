@@ -1,0 +1,21 @@
+{
+  "type": "plugin",
+  "id": "departures",
+  "name": {"de": "Abfahrten an deiner Haltestelle", "en": "Departures at your stop"},
+  "summary": {
+    "de": "Die nächsten Busse und Bahnen deiner Haltestelle auf „Heute“, mit Verspätung und Fußweg.",
+    "en": "The next buses and trains from your stop on Today, with delays and walking time."
+  },
+  "description": {
+    "de": "Zeigt auf „Heute“ die nächsten Abfahrten deiner Haltestelle, z. B. für den Schulweg: Linie, Richtung, Uhrzeit, Verspätung und Ausfälle. Mit Fußweg blendet es nicht erreichbare Abfahrten aus und zeigt „Losgehen in X Min.“. Filter nach Linie und Richtung, Zeitfenster (z. B. 06:30 bis 08:30) und nur Montag bis Freitag. Die Daten kommen von einer öffentlichen transport.rest-Instanz (Standard v6.db.transport.rest, andere wie v6.vbb.transport.rest möglich); Antworten werden kurz zwischengespeichert. Benötigt Familienhub 1.0.0-beta.3.",
+    "en": "Shows the next departures from your stop on Today, e.g. for the school run: line, direction, time, delay and cancellations. With a walking time it hides departures you cannot reach and shows \"leave in X min\". Filter by line and direction, set a time window (e.g. 06:30 to 08:30) and show it Monday to Friday only. Data comes from a public transport.rest instance (default v6.db.transport.rest, others such as v6.vbb.transport.rest work too); answers are cached briefly. Needs Familienhub 1.0.0-beta.3."
+  },
+  "author": "Familienhub",
+  "repo": "https://github.com/Brottuetchen/familienhub-store",
+  "path": "plugins/departures",
+  "sha": "TBD",
+  "version": "1.0.0",
+  "screenshots": ["screenshots/departures/1.png", "screenshots/departures/2.png"],
+  "tags": ["transport", "bus", "train", "school", "today"],
+  "min_hub_version": "1.0.0-beta.3"
+}

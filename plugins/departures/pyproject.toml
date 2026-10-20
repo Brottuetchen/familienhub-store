@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "familienhub-plugin-departures"
+version = "1.0.0"
+description = "Familienhub plugin: next departures at your stop on the Today screen (transport.rest)"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.entry-points."familienhub.plugins"]
+departures = "fh_plugin_departures.plugin:DeparturesPlugin"
+
+[tool.setuptools.packages.find]
+include = ["fh_plugin_departures*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
