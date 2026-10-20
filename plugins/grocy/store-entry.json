@@ -1,0 +1,21 @@
+{
+  "type": "plugin",
+  "id": "grocy",
+  "name": {"de": "Grocy", "en": "Grocy"},
+  "summary": {
+    "de": "Grocy als Einkaufsliste, ablaufende Vorräte in Heute und Hinweise für Eltern.",
+    "en": "Grocy as shopping list, expiring stock on Today and hints for parents."
+  },
+  "description": {
+    "de": "Macht Grocy zur Einkaufsquelle des Hubs (Liste, Rezeptzutaten, Vorlagen und Sprachbefehle landen in Grocy), zeigt bald ablaufende und fehlende Produkte als Karte in Heute und benachrichtigt Admins und Partner einmal pro Produkt und Datum. Optional kommen fehlende Produkte täglich automatisch auf die Liste. Kontaktiert nur die eigene Grocy-Adresse. Benötigt Familienhub 1.0.0-beta.3 oder neuer.",
+    "en": "Makes Grocy the hub's shopping source (list, recipe ingredients, templates and voice commands end up in Grocy), shows products that expire soon or are missing as a card on Today and notifies admins and partners once per product and date. Optionally puts missing products on the list every day. Contacts only your own Grocy address. Requires Familienhub 1.0.0-beta.3 or newer."
+  },
+  "author": "Familienhub",
+  "repo": "https://github.com/Brottuetchen/familienhub-store",
+  "path": "plugins/grocy",
+  "sha": "TBD",
+  "version": "1.0.0",
+  "screenshots": ["screenshots/grocy/1.png", "screenshots/grocy/2.png"],
+  "tags": ["grocy", "shopping", "stock", "pantry"],
+  "min_hub_version": "1.0.0-beta.3"
+}
