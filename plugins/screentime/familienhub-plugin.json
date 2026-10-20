@@ -1,0 +1,83 @@
+{
+  "id": "screentime",
+  "name": {"de": "Medienzeit als Belohnung", "en": "Screen time as a reward"},
+  "version": "1.0.0",
+  "description": {
+    "de": "Kinder lösen Sterne gegen Internetzeit ein: Bestätigt ein Elternteil, schaltet das Plugin das Gerät für N Minuten frei und sperrt es danach automatisch wieder. Für Fritz!Box, AdGuard Home oder Pi-hole im Heimnetz (Adresse = die, die Sie eintragen).",
+    "en": "Kids redeem stars for internet time: when a parent approves, the plugin unlocks the child's device for N minutes and blocks it again automatically. Works with a Fritz!Box, AdGuard Home or Pi-hole on your home network (the address you enter)."
+  },
+  "author": "Familienhub",
+  "homepage": "https://github.com/Brottuetchen/familienhub-store",
+  "license": "MIT",
+  "min_hub_version": "1.0.0-beta.3",
+  "package": ".",
+  "entry_point": "fh_plugin_screentime.plugin:ScreentimePlugin",
+  "settings": [
+    {
+      "key": "SCREENTIME_BACKEND",
+      "label": {"de": "System", "en": "System"},
+      "help": {"de": "Was die Geräte sperrt: fritzbox, adguard oder pihole.", "en": "What blocks the devices: fritzbox, adguard or pihole."},
+      "type": "text",
+      "required": true,
+      "example": "fritzbox"
+    },
+    {
+      "key": "SCREENTIME_URL",
+      "label": {"de": "Adresse", "en": "Address"},
+      "help": {
+        "de": "Fritz!Box: http://fritz.box:49000 oder https://fritz.box:49443 (TR-064). AdGuard Home / Pi-hole: Adresse der Weboberfläche.",
+        "en": "Fritz!Box: http://fritz.box:49000 or https://fritz.box:49443 (TR-064). AdGuard Home / Pi-hole: address of the web interface."
+      },
+      "type": "url",
+      "required": true,
+      "example": "http://fritz.box:49000"
+    },
+    {
+      "key": "SCREENTIME_USERNAME",
+      "label": {"de": "Benutzername", "en": "Username"},
+      "help": {"de": "Fritz!Box und AdGuard Home: nötig. Pi-hole: leer lassen.", "en": "Fritz!Box and AdGuard Home: required. Pi-hole: leave empty."},
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "SCREENTIME_PASSWORD",
+      "label": {"de": "Passwort", "en": "Password"},
+      "help": {"de": "Pi-hole: ein App-Passwort. Besser ein eigener Benutzer nur für dieses Plugin.", "en": "Pi-hole: an app password. Better a dedicated user just for this plugin."},
+      "type": "password",
+      "required": true
+    },
+    {
+      "key": "SCREENTIME_DEVICES",
+      "label": {"de": "Geräte", "en": "Devices"},
+      "help": {
+        "de": "Liste Name=Kennung, getrennt mit Komma. Fritz!Box: IPv4-Adresse. AdGuard: IP-Adresse oder ClientID. Pi-hole: Name der Gruppe.",
+        "en": "List of name=identifier, separated by commas. Fritz!Box: IPv4 address. AdGuard: IP address or ClientID. Pi-hole: name of the group."
+      },
+      "type": "text",
+      "required": true,
+      "example": "Mia's tablet=192.168.178.42, Ben's Switch=192.168.178.50"
+    },
+    {
+      "key": "SCREENTIME_DEFAULT_LOCKED",
+      "label": {"de": "Danach wieder sperren", "en": "Block again afterwards"},
+      "help": {
+        "de": "An (Standard): Nach Ablauf wird das Gerät wieder gesperrt. Aus: Das Plugin sperrt nie selbst, es meldet nur das Ende.",
+        "en": "On (default): the device is blocked again when the time is up. Off: the plugin never blocks anything itself, it only reports the end."
+      },
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "SCREENTIME_VERIFY_TLS",
+      "label": {"de": "HTTPS-Zertifikat prüfen", "en": "Verify HTTPS certificate"},
+      "help": {
+        "de": "Bei https:// mit selbstsigniertem Zertifikat (Fritz!Box, Pi-hole) ausschalten. Besser: http:// im Heimnetz.",
+        "en": "Switch off for https:// with a self-signed certificate (Fritz!Box, Pi-hole). Better: plain http:// inside your home network."
+      },
+      "type": "bool",
+      "default": true
+    }
+  ],
+  "hosts": ["fritz.box:49000", "fritz.box:49443", "pi.hole", "adguardhome.local"],
+  "capabilities": []
+}
