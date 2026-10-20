@@ -87,13 +87,16 @@ async def _get_json(base: str, path: str, params: Optional[dict] = None, token: 
 
 _search_cache: Dict[Tuple[str, str, int], Tuple[float, List[dict]]] = {}
 _detail_cache: Dict[Tuple[str, str], Tuple[float, dict]] = {}
-_images: Dict[str, Tuple[float, str, str]] = {}  # recipe id -> (expires, base, image path): the whitelist
+_images: Dict[str, Tuple[float, str, str]] = {}  # recipe id -> (stored at, base, image path): the whitelist
+_image_misses: Dict[Tuple[str, str], Tuple[float, bool]] = {}  # (base, id) -> looked up, nothing to serve
+MISS_TTL = 300.0
 
 
 def reset_caches() -> None:
     _search_cache.clear()
     _detail_cache.clear()
     _images.clear()
+    _image_misses.clear()
 
 
 def _put(cache: dict, key, value, limit: int = CACHE_MAX) -> None:
@@ -219,17 +222,38 @@ def _valid_id(recipe_id: Any) -> bool:
 
 @router.get("/image/{recipe_id}")
 async def image(recipe_id: str, request: Request, _user=Depends(get_current_user)):
-    """Recipe picture through the hub. Only for recipe ids this plugin returned recently; the address is built from
-    the configured Tandoor address plus the path Tandoor gave for that recipe, never from the request."""
+    """Recipe picture through the hub. Only numeric recipe ids; the address is built from the configured Tandoor
+    address plus the path Tandoor gave for that recipe (from a recent search or recipe call, else looked up once),
+    never from the request."""
     try:
         from app.plugins.api import proxy_image
     except Exception as exc:  # noqa: BLE001 - hub older than 1.0.0-beta.3
         raise HTTPException(404, "Not available") from exc
-    entry = _images.get(recipe_id) if _valid_id(recipe_id) else None
     base = _base()
-    if entry is None or not base or time.monotonic() - entry[0] > IMAGE_TTL or entry[1] != base:
+    if not base or not _valid_id(recipe_id):
+        raise HTTPException(404, "Image not found")
+    entry = _images.get(recipe_id)
+    if entry is None or time.monotonic() - entry[0] > IMAGE_TTL or entry[1] != base:
+        entry = await _resolve_image(base, recipe_id)  # e.g. after a restart: ask Tandoor for the recipe itself
+    if entry is None:
         raise HTTPException(404, "Image not found")
     return await proxy_image(f"{base}{entry[2]}", _headers(), request=request, timeout=TIMEOUT)
+
+
+async def _resolve_image(base: str, recipe_id: str) -> Optional[Tuple[float, str, str]]:
+    """Image path of a recipe this process has not returned (yet): fetch the recipe from the configured Tandoor.
+    Only the path Tandoor reports is used. A failed lookup or a recipe without picture is remembered for a while."""
+    key = (base, recipe_id)
+    if _fresh(_image_misses, key, MISS_TTL):
+        return None
+    try:
+        status, data = await _get_json(base, f"/api/recipe/{recipe_id}/")
+    except TandoorUnavailable:
+        status, data = 0, None
+    if status == 200 and isinstance(data, dict) and _register_image(recipe_id, base, data.get("image")):
+        return _images[recipe_id]
+    _put(_image_misses, key, True)
+    return None
 
 
 # --- the plugin -------------------------------------------------------------------------------------------------

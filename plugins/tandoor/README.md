@@ -46,7 +46,7 @@ It writes nothing to Tandoor. Planning is stored by the hub (`meal_plan`), like 
 
 ### Images
 
-Tandoor image addresses may be internal. The plugin serves them from its own authenticated hub route `/api/plugins/tandoor/image/<recipe id>` using the hub's `proxy_image` (type check by content, 5 MB limit, no redirects, caching headers). It is **not an open proxy**: only numeric recipe ids that the plugin returned in a search or recipe call in the last 7 days are served, and the URL is always the configured Tandoor address plus the image path Tandoor reported for that recipe. The token is only ever sent to that address.
+Tandoor image addresses may be internal. The plugin serves them from its own authenticated hub route `/api/plugins/tandoor/image/<recipe id>` using the hub's `proxy_image` (type check by content, 5 MB limit, no redirects, caching headers). It is **not an open proxy**: only numeric recipe ids are served. For ids returned by a search or recipe call in the last 7 days the remembered image path is used; for any other numeric id (for example after a hub restart) the plugin fetches that recipe from the configured Tandoor (`GET /api/recipe/{id}/`, 8 s, no redirects) and uses the image path Tandoor reports. A failed lookup, a missing recipe or a recipe without picture answers 404 and is remembered for 5 minutes. The URL is always the configured Tandoor address plus that path. The token is only ever sent to that address.
 
 ### Shopping list
 
@@ -59,7 +59,7 @@ Every call has an 8 s timeout and redirects are not followed. A Tandoor that is 
 ## Limitations
 
 - Searching uses Tandoor's name search (`query`); it does not search ingredients or keywords.
-- The image whitelist and caches are in memory. After a hub restart a planned recipe's thumbnail is empty until the recipe is searched or opened again.
+- The image paths and caches are in memory. After a hub restart the first request for each planned recipe's picture costs one extra lookup in Tandoor.
 - One Tandoor space: the space of the token's user is used. There is no space setting.
 - Instructions are plain text (Tandoor's Markdown is not rendered; other template tags than `scale()` are left as they are).
 - Not verified against a live Tandoor server, see below.

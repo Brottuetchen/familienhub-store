@@ -288,14 +288,18 @@ def test_image_only_for_returned_ids(client, tandoor):
     tandoor.get(f"{BASE}/api/recipe/").mock(return_value=httpx.Response(200, json=SEARCH))
     media = tandoor.get(f"{BASE}/media/recipes/gratin.jpg").mock(
         return_value=httpx.Response(200, content=PNG, headers={"content-type": "image/png"}))
-    assert client.get("/api/plugins/tandoor/image/12").status_code == 404  # not returned yet: no open proxy
+    tandoor.get(f"{BASE}/api/recipe/12/").mock(return_value=httpx.Response(404))
+    assert client.get("/api/plugins/tandoor/image/12").status_code == 404  # unknown to Tandoor: nothing to serve
     assert not media.called
+    mod.reset_caches()
     run(TandoorPlugin().recipe_search("gratin", 30))
     r = client.get("/api/plugins/tandoor/image/12")
     assert r.status_code == 200 and r.content == PNG and r.headers["content-type"] == "image/png"
     assert "private" in r.headers["cache-control"]
     assert media.calls.last.request.headers["authorization"] == "Bearer tda_test-token"
+    tandoor.get(f"{BASE}/api/recipe/13/").mock(return_value=httpx.Response(200, json={"id": 13, "name": "Lentil soup", "image": None}))
     assert client.get("/api/plugins/tandoor/image/13").status_code == 404  # returned, but has no image
+    tandoor.get(f"{BASE}/api/recipe/999/").mock(return_value=httpx.Response(404))
     assert client.get("/api/plugins/tandoor/image/999").status_code == 404
 
 
@@ -346,7 +350,57 @@ def test_image_whitelist_follows_the_configured_address(client, tandoor, monkeyp
     tandoor.get(f"{BASE}/api/recipe/").mock(return_value=httpx.Response(200, json=SEARCH))
     run(TandoorPlugin().recipe_search("gratin", 30))
     monkeypatch.setenv("TANDOOR_URL", "https://other.example.org")
+    tandoor.get("https://other.example.org/api/recipe/12/").mock(return_value=httpx.Response(404))
+    old_media = tandoor.get(f"{BASE}/media/recipes/gratin.jpg")
     assert client.get("/api/plugins/tandoor/image/12").status_code == 404
+    assert not old_media.called
+
+
+def test_image_of_unknown_id_is_looked_up_once(client, tandoor):
+    """After a restart the whitelist is empty: the recipe is fetched from Tandoor and its image path is used."""
+    detail = tandoor.get(f"{BASE}/api/recipe/12/").mock(return_value=httpx.Response(200, json=DETAIL))
+    media = tandoor.get(f"{BASE}/media/recipes/gratin.jpg").mock(return_value=httpx.Response(200, content=PNG))
+    r = client.get("/api/plugins/tandoor/image/12")
+    assert r.status_code == 200 and r.content == PNG
+    assert detail.calls.last.request.headers["authorization"] == "Bearer tda_test-token"
+    assert client.get("/api/plugins/tandoor/image/12").status_code == 200
+    assert detail.call_count == 1 and media.call_count == 2  # registered now: no second lookup
+
+
+def test_image_lookup_failures_are_404_and_negatively_cached(client, tandoor):
+    gone = tandoor.get(f"{BASE}/api/recipe/77/").mock(return_value=httpx.Response(404))
+    assert client.get("/api/plugins/tandoor/image/77").status_code == 404
+    assert client.get("/api/plugins/tandoor/image/77").status_code == 404
+    assert gone.call_count == 1
+    down = tandoor.get(f"{BASE}/api/recipe/78/").mock(side_effect=httpx.ConnectError("x"))
+    assert client.get("/api/plugins/tandoor/image/78").status_code == 404
+    assert client.get("/api/plugins/tandoor/image/78").status_code == 404
+    assert down.call_count == 1
+    noimg = tandoor.get(f"{BASE}/api/recipe/79/").mock(return_value=httpx.Response(200, json={"id": 79, "name": "x", "image": None}))
+    assert client.get("/api/plugins/tandoor/image/79").status_code == 404
+    assert client.get("/api/plugins/tandoor/image/79").status_code == 404
+    assert noimg.call_count == 1
+
+
+def test_image_lookup_expires_negative_cache(client, tandoor, monkeypatch):
+    route = tandoor.get(f"{BASE}/api/recipe/77/").mock(return_value=httpx.Response(404))
+    assert client.get("/api/plugins/tandoor/image/77").status_code == 404
+    monkeypatch.setattr(mod, "MISS_TTL", 0.0)
+    client.get("/api/plugins/tandoor/image/77")
+    assert route.call_count == 2
+
+
+def test_image_lookup_ignores_foreign_host_and_non_numeric_ids(client, tandoor):
+    tandoor.get(f"{BASE}/api/recipe/8/").mock(return_value=httpx.Response(200, json={"id": 8, "name": "E", "image": "https://evil.example.net/media/y.png"}))
+    evil = tandoor.get(host="evil.example.net").mock(return_value=httpx.Response(200, content=PNG))
+    ours = tandoor.get(f"{BASE}/media/y.png").mock(return_value=httpx.Response(200, content=PNG))
+    assert client.get("/api/plugins/tandoor/image/8").status_code == 200
+    assert ours.called and not evil.called
+    upstream = lambda: [c for c in tandoor.calls if c.request.url.host != "testserver"]
+    before = len(upstream())
+    for bad in ("abc", "1x", "9" * 20):
+        assert client.get(f"/api/plugins/tandoor/image/{bad}").status_code == 404
+    assert len(upstream()) == before  # no request for non-numeric ids
 
 
 def test_image_route_requires_login():
