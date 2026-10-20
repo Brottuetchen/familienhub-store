@@ -1,0 +1,1 @@
+"""Grocy plugin for Familienhub."""

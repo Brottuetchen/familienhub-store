@@ -1,0 +1,40 @@
+{
+  "id": "grocy",
+  "name": {"de": "Grocy", "en": "Grocy"},
+  "version": "1.0.0",
+  "description": {
+    "de": "Einkaufsliste, ablaufende Vorräte und fehlende Produkte aus deinem Grocy. Kontaktiert nur die Grocy-Adresse, die du einträgst.",
+    "en": "Shopping list, expiring stock and missing products from your Grocy. Contacts only the Grocy address you enter."
+  },
+  "author": "Familienhub",
+  "homepage": "https://github.com/Brottuetchen/familienhub-store",
+  "license": "MIT",
+  "min_hub_version": "1.0.0-beta.3",
+  "package": ".",
+  "entry_point": "fh_plugin_grocy.plugin:GrocyPlugin",
+  "settings": [
+    {"key": "GROCY_URL", "label": {"de": "Grocy-Adresse", "en": "Grocy address"},
+     "help": {"de": "So erreicht der Hub dein Grocy, ohne /api.", "en": "How the hub reaches your Grocy, without /api."},
+     "type": "url", "required": true, "example": "http://grocy.lan:9283"},
+    {"key": "GROCY_API_KEY", "label": {"de": "API-Schlüssel", "en": "API key"},
+     "help": {"de": "In Grocy: Einstellungen, API-Schlüssel verwalten, neuen Schlüssel anlegen.", "en": "In Grocy: Settings, Manage API keys, add a new key."},
+     "type": "password", "required": true},
+    {"key": "GROCY_SHOPPING_LIST_ID", "label": {"de": "Einkaufslisten-ID", "en": "Shopping list ID"},
+     "help": {"de": "Nummer der Grocy-Einkaufsliste (Standardliste: 1).", "en": "Number of the Grocy shopping list (default list: 1)."},
+     "type": "number", "required": false, "default": 1},
+    {"key": "GROCY_DUE_DAYS", "label": {"de": "Bald ablaufend: Tage", "en": "Expiring soon: days"},
+     "help": {"de": "Produkte, die in so vielen Tagen ablaufen, gelten als bald ablaufend.", "en": "Products that expire within this many days count as expiring soon."},
+     "type": "number", "required": false, "default": 2},
+    {"key": "GROCY_NOTIFY", "label": {"de": "Eltern benachrichtigen", "en": "Notify parents"},
+     "help": {"de": "Einmal pro Produkt und Datum eine Nachricht an Admins und Partner.", "en": "One message per product and date to admins and partners."},
+     "type": "bool", "required": false, "default": true},
+    {"key": "GROCY_NOTIFY_HOUR", "label": {"de": "Uhrzeit für Hinweise (0-23)", "en": "Notification hour (0-23)"},
+     "help": {"de": "Ab dieser Stunde prüft der Hub täglich.", "en": "The hub checks daily from this hour on."},
+     "type": "number", "required": false, "default": 8},
+    {"key": "GROCY_ADD_MISSING", "label": {"de": "Fehlende Produkte automatisch auf die Liste", "en": "Add missing products to the list automatically"},
+     "help": {"de": "Einmal täglich: Produkte unter Mindestbestand auf die Einkaufsliste setzen.", "en": "Once a day: put products below minimum stock on the shopping list."},
+     "type": "bool", "required": false, "default": false}
+  ],
+  "hosts": [],
+  "capabilities": ["shopping"]
+}
