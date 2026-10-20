@@ -56,6 +56,6 @@
       "default": 3
     }
   ],
-  "hosts": ["photos.example.org"],
+  "hosts": [],
   "capabilities": []
 }

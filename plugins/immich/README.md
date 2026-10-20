@@ -48,7 +48,7 @@ The plugin acts as the **owner of the API key**: it sees that person's library, 
 
 ## Hosts contacted
 
-Only your own Immich server, the address you enter in `IMMICH_URL`. The `hosts` entry in the manifest (`photos.example.org`) is only a placeholder, because the real host depends on your setup. Nothing else is contacted, there is no telemetry.
+Only your own Immich server, the address you enter in `IMMICH_URL`. The manifest lists no `hosts`, because the real host depends on your setup. Nothing else is contacted, there is no telemetry.
 
 ## Data read and written
 
