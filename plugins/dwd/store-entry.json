@@ -1,0 +1,21 @@
+{
+  "type": "plugin",
+  "id": "dwd",
+  "name": {"de": "DWD Wetterwarnungen & Pollen", "en": "DWD weather warnings & pollen"},
+  "summary": {
+    "de": "Amtliche Unwetterwarnungen und Pollenflug des Deutschen Wetterdienstes in „Heute“, mit Push.",
+    "en": "Official severe-weather warnings and pollen forecast from the German Weather Service on Today, with push."
+  },
+  "description": {
+    "de": "Zeigt amtliche Wetterwarnungen des Deutschen Wetterdienstes (über Bright Sky) und den Pollenflug-Gefahrenindex (DWD Open Data) für euren Ort als zwei Karten in „Heute“. Neue Warnungen ab einer einstellbaren Stufe kommen als Push an Admins, Partner und Kinder, jede Warnung nur einmal, auch nach einem Neustart. Der Ort kommt aus dem Wetter-Plugin, wenn dort einer eingestellt ist. Kein Konto und kein Schlüssel nötig. Quelle: Deutscher Wetterdienst.",
+    "en": "Shows official weather warnings from the German Weather Service (via Bright Sky) and the pollen forecast index (DWD open data) for your location as two cards on Today. New warnings from a configurable level on are pushed to admins, partners and children, each warning only once, even across restarts. The location comes from the weather plugin if one is set there. No account and no key needed. Source: Deutscher Wetterdienst."
+  },
+  "author": "Familienhub",
+  "repo": "https://github.com/Brottuetchen/familienhub-store",
+  "path": "plugins/dwd",
+  "sha": "TBD",
+  "version": "1.0.0",
+  "screenshots": ["screenshots/dwd/1.png", "screenshots/dwd/2.png"],
+  "tags": ["weather", "warnings", "pollen", "dwd", "germany", "push"],
+  "min_hub_version": "1.0.0-beta.3"
+}
