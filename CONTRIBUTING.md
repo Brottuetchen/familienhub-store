@@ -14,7 +14,7 @@
 - Themes: `theme.json` at that commit is valid and looks like the screenshots.
 - Plugins:
   - The code at that commit does what the description says.
-  - It declares the hosts it talks to.
+  - It declares the hosts it talks to. A plugin that only talks to an address the admin enters may leave `hosts` empty and says so in its description.
   - It has no obfuscated code, no telemetry without consent, and no unexpected network access.
   - Plugins run inside the hub process with full access, so this review is the main protection.
 - Updates: the diff between the old and the new `sha`.
@@ -22,3 +22,7 @@
 ## Updating an entry
 
 Open a pull request that changes `sha`, `version` and, if needed, the screenshots. The hub shows "Update available" to admins who installed the entry.
+
+## Official plugins in this repository
+
+The plugins under `plugins/<id>/` are maintained here. Their index entries use `repo` = this repository and `path` = `plugins/<id>`. `plugins/<id>/store-entry.json` is the draft of the entry (with `sha` `TBD`, checked by the plugin's own tests); the pinned `sha` lives only in `index.json`. A change to such a plugin is a pull request that changes the plugin and, after merge, a second one that moves its `sha` in `index.json` to the merged commit.

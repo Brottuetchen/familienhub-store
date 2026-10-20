@@ -298,6 +298,236 @@
         "bauhaus",
         "bold"
       ]
+    },
+    {
+      "type": "plugin",
+      "id": "grocy",
+      "name": {
+        "de": "Grocy",
+        "en": "Grocy"
+      },
+      "summary": {
+        "de": "Grocy als Einkaufsliste, ablaufende Vorräte in Heute und Hinweise für Eltern.",
+        "en": "Grocy as shopping list, expiring stock on Today and hints for parents."
+      },
+      "description": {
+        "de": "Macht Grocy zur Einkaufsquelle des Hubs (Liste, Rezeptzutaten, Vorlagen und Sprachbefehle landen in Grocy), zeigt bald ablaufende und fehlende Produkte als Karte in Heute und benachrichtigt Admins und Partner einmal pro Produkt und Datum. Optional kommen fehlende Produkte täglich automatisch auf die Liste. Kontaktiert nur die eigene Grocy-Adresse. Benötigt Familienhub 1.0.0-beta.3 oder neuer.",
+        "en": "Makes Grocy the hub's shopping source (list, recipe ingredients, templates and voice commands end up in Grocy), shows products that expire soon or are missing as a card on Today and notifies admins and partners once per product and date. Optionally puts missing products on the list every day. Contacts only your own Grocy address. Requires Familienhub 1.0.0-beta.3 or newer."
+      },
+      "author": "Familienhub",
+      "repo": "https://github.com/Brottuetchen/familienhub-store",
+      "path": "plugins/grocy",
+      "sha": "b80b46b58640e7195d0dd2e2a3577bf122428ea7",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/grocy/1.png",
+        "screenshots/grocy/2.png"
+      ],
+      "tags": [
+        "grocy",
+        "shopping",
+        "stock",
+        "pantry"
+      ],
+      "min_hub_version": "1.0.0-beta.3"
+    },
+    {
+      "type": "plugin",
+      "id": "immich",
+      "name": {
+        "de": "Immich: An diesem Tag",
+        "en": "Immich: On this day"
+      },
+      "summary": {
+        "de": "Zeigt auf „Heute“ Fotos von diesem Tag aus früheren Jahren aus Immich.",
+        "en": "Shows photos from this day in earlier years from Immich on the Today screen."
+      },
+      "description": {
+        "de": "Zeigt auf „Heute“ Fotos von diesem Tag aus früheren Jahren („vor 3 Jahren“) aus deiner Immich-Fotobibliothek, bevorzugt Favoriten. Optional nur aus bestimmten Alben, mit archivierten Fotos und mit einstellbarer Anzahl. Die Fotos bleiben in Immich: der Hub reicht nur Vorschaubilder an angemeldete Familienmitglieder weiter, und nur für die heute ausgewählten Fotos. Das Plugin liest nur, schreibt nichts und enthält einen Verbindungstest. Benötigt Familienhub 1.0.0-beta.3 oder neuer.",
+        "en": "Shows photos from this day in earlier years (\"3 years ago\") from your Immich photo library on the Today screen, preferring favourites. Optionally limited to certain albums, with archived photos and a configurable number. Photos stay in Immich: the hub only passes previews on to signed-in family members, and only for the photos picked for today. The plugin only reads, writes nothing and has a connection test. Needs Familienhub 1.0.0-beta.3 or newer."
+      },
+      "author": "Familienhub",
+      "repo": "https://github.com/Brottuetchen/familienhub-store",
+      "path": "plugins/immich",
+      "sha": "0903593adb8d68b9f36a5005aa5b2434670489cc",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/immich/1.png",
+        "screenshots/immich/2.png"
+      ],
+      "tags": [
+        "photos",
+        "immich",
+        "memories",
+        "today"
+      ],
+      "min_hub_version": "1.0.0-beta.3"
+    },
+    {
+      "type": "plugin",
+      "id": "tandoor",
+      "name": {
+        "de": "Tandoor Rezepte",
+        "en": "Tandoor Recipes"
+      },
+      "summary": {
+        "de": "Rezepte aus Ihrem Tandoor-Server suchen, ansehen, einplanen und einkaufen.",
+        "en": "Search, view and plan recipes from your Tandoor server and shop for them."
+      },
+      "description": {
+        "de": "Bindet Ihren eigenen Tandoor-Recipes-Server als Rezeptquelle ein: erscheint in der App als \"Rezept aus Tandoor\" mit Suche, Schnellansicht (Bild, Portionen, Arbeits- und Wartezeit, Zutaten, Schritte), Einplanen auf einen Tag und Zutaten auf die Einkaufsliste. Bilder laufen über den Hub, der Token verlässt ihn nie. Liest nur, schreibt nichts nach Tandoor. Verbindet sich ausschließlich mit der Adresse, die Sie eintragen. Den API-Token legen Sie in Tandoor unter Einstellungen → API an.",
+        "en": "Connects your own Tandoor Recipes server as a recipe source: it appears in the app as \"Recipe from Tandoor\" with search, quick view (picture, servings, working and waiting time, ingredients, steps), planning on a day and ingredients to the shopping list. Pictures go through the hub and the token never leaves it. Read-only: nothing is written to Tandoor. Only contacts the address you enter. Create the API token in Tandoor under Settings → API."
+      },
+      "author": "Familienhub",
+      "repo": "https://github.com/Brottuetchen/familienhub-store",
+      "path": "plugins/tandoor",
+      "sha": "5d0d496ce3d3d096786c93d28fce52033cd006eb",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/tandoor/1.png",
+        "screenshots/tandoor/2.png"
+      ],
+      "tags": [
+        "recipes",
+        "meal planning",
+        "tandoor",
+        "cooking"
+      ],
+      "min_hub_version": "1.0.0-beta.3"
+    },
+    {
+      "type": "plugin",
+      "id": "departures",
+      "name": {
+        "de": "Abfahrten an deiner Haltestelle",
+        "en": "Departures at your stop"
+      },
+      "summary": {
+        "de": "Die nächsten Busse und Bahnen deiner Haltestelle auf „Heute“, mit Verspätung und Fußweg.",
+        "en": "The next buses and trains from your stop on Today, with delays and walking time."
+      },
+      "description": {
+        "de": "Zeigt auf „Heute“ die nächsten Abfahrten deiner Haltestelle, z. B. für den Schulweg: Linie, Richtung, Uhrzeit, Verspätung und Ausfälle. Mit Fußweg blendet es nicht erreichbare Abfahrten aus und zeigt „Losgehen in X Min.“. Filter nach Linie und Richtung, Zeitfenster (z. B. 06:30 bis 08:30) und nur Montag bis Freitag. Die Daten kommen von einer öffentlichen transport.rest-Instanz (Standard v6.db.transport.rest, andere wie v6.vbb.transport.rest möglich); Antworten werden kurz zwischengespeichert. Benötigt Familienhub 1.0.0-beta.3.",
+        "en": "Shows the next departures from your stop on Today, e.g. for the school run: line, direction, time, delay and cancellations. With a walking time it hides departures you cannot reach and shows \"leave in X min\". Filter by line and direction, set a time window (e.g. 06:30 to 08:30) and show it Monday to Friday only. Data comes from a public transport.rest instance (default v6.db.transport.rest, others such as v6.vbb.transport.rest work too); answers are cached briefly. Needs Familienhub 1.0.0-beta.3."
+      },
+      "author": "Familienhub",
+      "repo": "https://github.com/Brottuetchen/familienhub-store",
+      "path": "plugins/departures",
+      "sha": "94cba6e5e7ad7adbb756f295f53719162ba4e889",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/departures/1.png",
+        "screenshots/departures/2.png"
+      ],
+      "tags": [
+        "transport",
+        "bus",
+        "train",
+        "school",
+        "today"
+      ],
+      "min_hub_version": "1.0.0-beta.3"
+    },
+    {
+      "type": "plugin",
+      "id": "dwd",
+      "name": {
+        "de": "DWD Wetterwarnungen & Pollen",
+        "en": "DWD weather warnings & pollen"
+      },
+      "summary": {
+        "de": "Amtliche Unwetterwarnungen und Pollenflug des Deutschen Wetterdienstes in „Heute“, mit Push.",
+        "en": "Official severe-weather warnings and pollen forecast from the German Weather Service on Today, with push."
+      },
+      "description": {
+        "de": "Zeigt amtliche Wetterwarnungen des Deutschen Wetterdienstes (über Bright Sky) und den Pollenflug-Gefahrenindex (DWD Open Data) für euren Ort als zwei Karten in „Heute“. Neue Warnungen ab einer einstellbaren Stufe kommen als Push an Admins, Partner und Kinder, jede Warnung nur einmal, auch nach einem Neustart. Der Ort kommt aus dem Wetter-Plugin, wenn dort einer eingestellt ist. Kein Konto und kein Schlüssel nötig. Quelle: Deutscher Wetterdienst.",
+        "en": "Shows official weather warnings from the German Weather Service (via Bright Sky) and the pollen forecast index (DWD open data) for your location as two cards on Today. New warnings from a configurable level on are pushed to admins, partners and children, each warning only once, even across restarts. The location comes from the weather plugin if one is set there. No account and no key needed. Source: Deutscher Wetterdienst."
+      },
+      "author": "Familienhub",
+      "repo": "https://github.com/Brottuetchen/familienhub-store",
+      "path": "plugins/dwd",
+      "sha": "ed612bbfe5ec027107aff91bd09fd33c9e8905a2",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/dwd/1.png",
+        "screenshots/dwd/2.png"
+      ],
+      "tags": [
+        "weather",
+        "warnings",
+        "pollen",
+        "dwd",
+        "germany",
+        "push"
+      ],
+      "min_hub_version": "1.0.0-beta.3"
+    },
+    {
+      "type": "plugin",
+      "id": "screentime",
+      "name": {
+        "de": "Medienzeit als Belohnung",
+        "en": "Screen time as a reward"
+      },
+      "summary": {
+        "de": "Sterne gegen Internetzeit: Gerät des Kindes für N Minuten freischalten, danach automatisch sperren.",
+        "en": "Stars for internet time: unlock a child's device for N minutes, then block it again automatically."
+      },
+      "description": {
+        "de": "Kinder lösen Sterne gegen Medienzeit ein. Bestätigt ein Elternteil die Belohnung, schaltet das Plugin das Gerät für die eingestellten Minuten frei und sperrt es danach wieder, auch nach einem Neustart des Hubs. Funktioniert mit Fritz!Box (TR-064), AdGuard Home oder Pi-hole v6. Mit Verbindungstest, Hinweis an das Kind kurz vor Ende, Meldung an die Eltern, falls das Sperren nicht klappt, und einer Heute-Karte mit den freigeschalteten Geräten. Die Geräte müssen einmal im System gesperrt werden; DNS-Sperren lassen sich umgehen, siehe README.",
+        "en": "Kids redeem stars for media time. When a parent approves the reward, the plugin unlocks the device for the chosen minutes and blocks it again afterwards, also after a hub restart. Works with a Fritz!Box (TR-064), AdGuard Home or Pi-hole v6. Includes a connection test, a heads-up to the child shortly before the end, a notice to the parents if blocking fails, and a Today card listing unlocked devices. Devices must be blocked once in your system; DNS blocking can be bypassed, see the README."
+      },
+      "author": "Familienhub",
+      "repo": "https://github.com/Brottuetchen/familienhub-store",
+      "path": "plugins/screentime",
+      "sha": "633b8ba7e2e02927801c4576114129b6fadb07f9",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/screentime/1.png",
+        "screenshots/screentime/2.png"
+      ],
+      "tags": [
+        "kids",
+        "stars",
+        "screen time",
+        "fritzbox",
+        "adguard",
+        "pihole",
+        "parental control"
+      ],
+      "min_hub_version": "1.0.0-beta.3"
+    },
+    {
+      "type": "plugin",
+      "id": "webuntis",
+      "name": {
+        "de": "WebUntis",
+        "en": "WebUntis"
+      },
+      "summary": {
+        "de": "Stundenplan aus WebUntis, mit Ausfall und Vertretung per Push",
+        "en": "Timetable from WebUntis, with cancellations and substitutions by push"
+      },
+      "description": {
+        "de": "Füllt den Stundenplan der Kinder automatisch aus WebUntis (Eltern- oder Schülerzugang der Schule): Fächer, Räume, Lehrkräfte, Hinweise, Ausfall und Vertretung. Alle 15 Minuten (06–22 Uhr) meldet das Plugin neue Ausfälle und Vertretungen per Push an Eltern und Kind, z. B. „Mia: 3.–4. Stunde Mathe ausgefallen morgen“. Die Daten bleiben im Hub, geschrieben wird nichts in WebUntis. Verbindungstest eingebaut. Noch nicht an einer echten Schule getestet.",
+        "en": "Fills the children's timetable from WebUntis automatically (parent or student account of the school): subjects, rooms, teachers, notes, cancellations and substitutions. Every 15 minutes (06:00-22:00) it pushes new cancellations and substitutions to the parents and the child, e.g. \"Mia: 3rd-4th period Maths cancelled tomorrow\". Data stays in your hub, nothing is written to WebUntis. Includes a connection test. Not yet tested against a real school."
+      },
+      "author": "Familienhub",
+      "repo": "https://github.com/Brottuetchen/familienhub-store",
+      "path": "plugins/webuntis",
+      "sha": "ae5ad0d1280020f7bee2ac90703d2afe1d710d36",
+      "version": "1.0.0",
+      "screenshots": [
+        "screenshots/webuntis/1.png",
+        "screenshots/webuntis/2.png"
+      ],
+      "tags": [
+        "school",
+        "timetable",
+        "webuntis",
+        "notifications"
+      ],
+      "min_hub_version": "1.0.0-beta.3"
     }
   ]
 }

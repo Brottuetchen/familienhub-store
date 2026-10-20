@@ -16,12 +16,27 @@ Format, security model and API: [docs/store.md](https://github.com/Brottuetchen/
 ```
 index.json                    the catalogue (format version 1)
 screenshots/<entry-id>/1.png  screenshots, referenced by relative path from index.json
+plugins/<id>/                 official plugins maintained in this repository
 tools/validate.py             the check CI runs on every pull request
 ```
 
+CI runs `tools/validate.py` on every pull request, and the tests of every plugin under `plugins/` against the current Familienhub `main`.
+
 ## Currently listed
 
-All themes from the [theme gallery](https://github.com/Brottuetchen/familienhub-themes), each with a light and a dark screenshot. Plugins will follow as they are reviewed.
+All themes from the [theme gallery](https://github.com/Brottuetchen/familienhub-themes), each with a light and a dark screenshot, and seven official plugins. The plugins need Familienhub 1.0.0-beta.3 or newer. Each asks for its addresses and credentials during installation and has a connection test.
+
+| Plugin | What it does |
+|---|---|
+| [Immich](plugins/immich) | "On this day" photos from your Immich on the Today screen. |
+| [WebUntis](plugins/webuntis) | Children's timetable from WebUntis, with a push for cancellations and substitutions. |
+| [Screen time](plugins/screentime) | Internet time as a reward: unlocks a device on a Fritz!Box, AdGuard Home or Pi-hole and locks it again. |
+| [DWD](plugins/dwd) | Official weather warnings and the pollen forecast from the Deutscher Wetterdienst, with push for warnings. |
+| [Departures](plugins/departures) | Next departures at your stop, including delays and walking time. |
+| [Grocy](plugins/grocy) | Grocy as the shopping list, expiring stock on Today, daily hints for parents. |
+| [Tandoor](plugins/tandoor) | Tandoor as a recipe source: search, plan, ingredients to the shopping list. |
+
+Each plugin README says what was tested against the real service and what only against simulated answers.
 
 ## Submitting a plugin or theme
 
