@@ -1,0 +1,77 @@
+{
+  "id": "dwd",
+  "name": {"de": "DWD Wetterwarnungen & Pollen", "en": "DWD weather warnings & pollen"},
+  "version": "1.0.0",
+  "description": {
+    "de": "Amtliche Unwetterwarnungen des Deutschen Wetterdienstes und der Pollenflug-Gefahrenindex für euren Ort: Karten in „Heute“ und Push bei neuen Warnungen.",
+    "en": "Official severe-weather warnings from the German Weather Service and the pollen forecast for your location: cards on Today and a push notification for new warnings."
+  },
+  "author": "Familienhub",
+  "homepage": "https://github.com/Brottuetchen/familienhub-store/tree/main/plugins/dwd",
+  "license": "MIT",
+  "min_hub_version": "1.0.0-beta.3",
+  "package": ".",
+  "entry_point": "fh_plugin_dwd.plugin:DwdPlugin",
+  "settings": [
+    {
+      "key": "DWD_LATITUDE",
+      "label": {"de": "Breitengrad", "en": "Latitude"},
+      "help": {"de": "Leer lassen, um den Ort des Wetter-Plugins zu verwenden (muss dort eingestellt sein).", "en": "Leave empty to use the location of the weather plugin (it must be set there)."},
+      "type": "number",
+      "required": false,
+      "example": "52.52"
+    },
+    {
+      "key": "DWD_LONGITUDE",
+      "label": {"de": "Längengrad", "en": "Longitude"},
+      "help": {"de": "Leer lassen, um den Ort des Wetter-Plugins zu verwenden.", "en": "Leave empty to use the location of the weather plugin."},
+      "type": "number",
+      "required": false,
+      "example": "13.405"
+    },
+    {
+      "key": "DWD_MIN_SEVERITY",
+      "label": {"de": "Push ab Warnstufe", "en": "Push from severity"},
+      "help": {"de": "minor (Wetterwarnung), moderate (markant), severe (Unwetter) oder extreme. Gilt nur für Push, die Karte zeigt alle Warnungen.", "en": "minor, moderate, severe or extreme. Applies to push only; the card shows all warnings."},
+      "type": "text",
+      "required": false,
+      "default": "moderate",
+      "example": "moderate"
+    },
+    {
+      "key": "DWD_NOTIFY",
+      "label": {"de": "Push bei neuen Warnungen", "en": "Push for new warnings"},
+      "help": {"de": "Benachrichtigt Admins, Partner und Kinder (nicht Gäste).", "en": "Notifies admins, partners and children (not guests)."},
+      "type": "bool",
+      "required": false,
+      "default": true
+    },
+    {
+      "key": "DWD_POLLEN_REGION",
+      "label": {"de": "Pollen-Region", "en": "Pollen region"},
+      "help": {"de": "Optional: Teilregion-Nummer (z. B. 92) oder Name (z. B. Rhein-Main). Leer = Bundesland des Ortes.", "en": "Optional: partregion number (e.g. 92) or name (e.g. Rhein-Main). Empty = the federal state of your location."},
+      "type": "text",
+      "required": false,
+      "example": "92"
+    },
+    {
+      "key": "DWD_POLLEN_TYPES",
+      "label": {"de": "Pollenarten", "en": "Pollen types"},
+      "help": {"de": "Optional, kommagetrennt, z. B. Birke, Gräser. Leer = alle.", "en": "Optional, comma separated, e.g. Birch, Grasses. Empty = all."},
+      "type": "text",
+      "required": false,
+      "example": "Birke, Gräser"
+    },
+    {
+      "key": "DWD_POLLEN_MIN",
+      "label": {"de": "Pollen anzeigen ab", "en": "Show pollen from"},
+      "help": {"de": "low (gering), medium (mittel) oder high (hoch).", "en": "low, medium or high."},
+      "type": "text",
+      "required": false,
+      "default": "medium",
+      "example": "medium"
+    }
+  ],
+  "hosts": ["api.brightsky.dev", "opendata.dwd.de"],
+  "capabilities": []
+}

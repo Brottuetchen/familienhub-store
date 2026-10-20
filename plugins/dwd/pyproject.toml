@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "familienhub-plugin-dwd"
+version = "1.0.0"
+description = "Severe-weather warnings and pollen forecast from the German Weather Service (DWD) for Familienhub"
+requires-python = ">=3.12"
+# fastapi and httpx come from the hub
+dependencies = []
+
+[project.entry-points."familienhub.plugins"]
+dwd = "fh_plugin_dwd.plugin:DwdPlugin"
+
+[tool.setuptools.packages.find]
+include = ["fh_plugin_dwd*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
