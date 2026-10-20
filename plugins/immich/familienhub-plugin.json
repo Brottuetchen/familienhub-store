@@ -1,0 +1,61 @@
+{
+  "id": "immich",
+  "name": {"de": "Immich: An diesem Tag", "en": "Immich: On this day"},
+  "version": "1.0.0",
+  "description": {
+    "de": "Zeigt auf „Heute“ ein Foto von diesem Tag aus früheren Jahren aus deiner Immich-Fotobibliothek. Die Fotos bleiben in Immich, der Hub reicht nur Vorschaubilder an angemeldete Familienmitglieder weiter.",
+    "en": "Shows a photo from this day in earlier years from your Immich photo library on the Today screen. Photos stay in Immich; the hub only passes thumbnails on to signed-in family members."
+  },
+  "author": "Familienhub",
+  "homepage": "https://github.com/Brottuetchen/familienhub-store",
+  "license": "MIT",
+  "min_hub_version": "1.0.0-beta.3",
+  "package": ".",
+  "entry_point": "fh_plugin_immich.plugin:ImmichPlugin",
+  "settings": [
+    {
+      "key": "IMMICH_URL",
+      "label": {"de": "Adresse von Immich", "en": "Address of Immich"},
+      "help": {"de": "So erreicht der Hub Immich, ohne /api am Ende.", "en": "How the hub reaches Immich, without /api at the end."},
+      "type": "url",
+      "required": true,
+      "example": "https://photos.example.org"
+    },
+    {
+      "key": "IMMICH_API_KEY",
+      "label": {"de": "API-Schlüssel", "en": "API key"},
+      "help": {
+        "de": "In Immich unter Kontoeinstellungen → API-Schlüssel anlegen (Rechte: asset.read, asset.view, memory.read, album.read, server.about, user.read oder „Alle“).",
+        "en": "Create it in Immich under Account settings → API keys (permissions: asset.read, asset.view, memory.read, album.read, server.about, user.read, or \"All\")."
+      },
+      "type": "password",
+      "required": true
+    },
+    {
+      "key": "IMMICH_ALBUM_IDS",
+      "label": {"de": "Nur diese Alben (optional)", "en": "Only these albums (optional)"},
+      "help": {
+        "de": "Album-IDs, durch Komma getrennt (die ID steht in der Adresse des Albums in Immich). Leer = ganze Bibliothek.",
+        "en": "Album IDs separated by commas (the ID is in the album's address in Immich). Empty = the whole library."
+      },
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "IMMICH_INCLUDE_ARCHIVED",
+      "label": {"de": "Archivierte Fotos einbeziehen", "en": "Include archived photos"},
+      "type": "bool",
+      "default": false
+    },
+    {
+      "key": "IMMICH_MAX_PHOTOS",
+      "label": {"de": "Anzahl Fotos", "en": "Number of photos"},
+      "help": {"de": "Höchstens so viele Fotos pro Tag (1 bis 5).", "en": "At most this many photos per day (1 to 5)."},
+      "type": "number",
+      "required": false,
+      "default": 3
+    }
+  ],
+  "hosts": [],
+  "capabilities": []
+}

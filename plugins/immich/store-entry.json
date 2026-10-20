@@ -1,0 +1,21 @@
+{
+  "type": "plugin",
+  "id": "immich",
+  "name": {"de": "Immich: An diesem Tag", "en": "Immich: On this day"},
+  "summary": {
+    "de": "Zeigt auf „Heute“ Fotos von diesem Tag aus früheren Jahren aus Immich.",
+    "en": "Shows photos from this day in earlier years from Immich on the Today screen."
+  },
+  "description": {
+    "de": "Zeigt auf „Heute“ Fotos von diesem Tag aus früheren Jahren („vor 3 Jahren“) aus deiner Immich-Fotobibliothek, bevorzugt Favoriten. Optional nur aus bestimmten Alben, mit archivierten Fotos und mit einstellbarer Anzahl. Die Fotos bleiben in Immich: der Hub reicht nur Vorschaubilder an angemeldete Familienmitglieder weiter, und nur für die heute ausgewählten Fotos. Das Plugin liest nur, schreibt nichts und enthält einen Verbindungstest. Benötigt Familienhub 1.0.0-beta.3 oder neuer.",
+    "en": "Shows photos from this day in earlier years (\"3 years ago\") from your Immich photo library on the Today screen, preferring favourites. Optionally limited to certain albums, with archived photos and a configurable number. Photos stay in Immich: the hub only passes previews on to signed-in family members, and only for the photos picked for today. The plugin only reads, writes nothing and has a connection test. Needs Familienhub 1.0.0-beta.3 or newer."
+  },
+  "author": "Familienhub",
+  "repo": "https://github.com/Brottuetchen/familienhub-store",
+  "path": "plugins/immich",
+  "sha": "TBD",
+  "version": "1.0.0",
+  "screenshots": ["screenshots/immich/1.png", "screenshots/immich/2.png"],
+  "tags": ["photos", "immich", "memories", "today"],
+  "min_hub_version": "1.0.0-beta.3"
+}
