@@ -1,7 +1,7 @@
 {
   "id": "immich",
   "name": {"de": "Immich: An diesem Tag", "en": "Immich: On this day"},
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": {
     "de": "Zeigt auf „Heute“ ein Foto von diesem Tag aus früheren Jahren aus deiner Immich-Fotobibliothek. Die Fotos bleiben in Immich, der Hub reicht nur Vorschaubilder an angemeldete Familienmitglieder weiter.",
     "en": "Shows a photo from this day in earlier years from your Immich photo library on the Today screen. Photos stay in Immich; the hub only passes thumbnails on to signed-in family members."

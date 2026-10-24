@@ -80,7 +80,7 @@ def test_manifest_is_valid_and_matches_the_code():
     manifest = validate_manifest(json.loads((ROOT / "familienhub-plugin.json").read_text()))
     plugin = ImmichPlugin()
     assert plugin.id == manifest["id"] == "immich"
-    assert manifest["version"] == "1.0.0" and manifest["min_hub_version"] == "1.0.0-beta.3"
+    assert manifest["version"] == "1.1.0" and manifest["min_hub_version"] == "1.0.0-beta.3"
     assert manifest["capabilities"] == [] and set(plugin.capabilities) <= set(manifest["capabilities"])
     assert {s.key for s in plugin.settings} == {s["key"] for s in manifest["settings"]}
     by_key = {s["key"]: s for s in manifest["settings"]}
@@ -159,14 +159,24 @@ def test_cards_from_memories(configured, immich):
     result = cards(type("U", (), {"language": "en"})())
     assert route.calls.last.request.headers["x-api-key"] == KEY
     assert route.calls.last.request.url.params["for"].startswith("2026-10-20")
-    assert [c["id"] for c in result] == ["on-this-day", "on-this-day-2"]
-    first, second = result
-    assert first["title"] == "On this day, 3 years ago" and first["icon"] == "photo"
-    assert first["lines"] == [{"text": "3 years ago", "secondary": "2023-10-20"}]
-    assert first["image"] == f"/api/plugins/immich/thumbnail/{A1}"
-    assert first["link"] == f"{BASE}/photos/{A1}"
-    assert second["title"] == "On this day, 5 years ago"
-    assert second["lines"][0] == {"text": "5 years ago"} and second["lines"][1]["text"] == "Mia's first bike"
+    assert len(result) == 1  # several photos: one swipeable card
+    card = result[0]
+    assert card["id"] == "on-this-day" and card["title"] == "On this day" and card["icon"] == "photo"
+    assert card["badge"] == "2" and card["lines"] == []
+    assert card["image"] == f"/api/plugins/immich/thumbnail/{A1}" and card["link"] == f"{BASE}/photos/{A1}"
+    first, second = card["slides"]
+    assert first == {"image": f"/api/plugins/immich/thumbnail/{A1}", "caption": "3 years ago",
+                     "secondary": "2023-10-20", "link": f"{BASE}/photos/{A1}"}
+    assert second["caption"] == "5 years ago" and second["secondary"] == "Mia's first bike · 2021-10-20"
+    assert second["image"] == f"/api/plugins/immich/thumbnail/{A2}"
+
+
+def test_a_single_photo_is_a_plain_card(configured, immich):
+    immich.get(f"{BASE}/api/memories").mock(return_value=httpx.Response(200, json=memories(
+        (2021, [asset(A2, "2021-10-20T08:00:00.000Z", exifInfo={"description": "Mia's first bike"})]))))
+    card = cards(type("U", (), {"language": "en"})())[0]
+    assert card["title"] == "On this day, 5 years ago" and "slides" not in card
+    assert card["lines"][0] == {"text": "5 years ago"} and card["lines"][1]["text"] == "Mia's first bike"
 
 
 def test_german_texts_by_default(configured, immich):
@@ -183,6 +193,15 @@ def test_cards_survive_the_hubs_validation(configured, immich):
     assert clean[0]["image"] == f"/api/plugins/immich/thumbnail/{A1}" and clean[0]["link"] == f"{BASE}/photos/{A1}"
     assert clean[0]["icon"] == "photo"
 
+
+
+def test_slides_survive_the_hubs_validation(configured, immich):
+    immich.get(f"{BASE}/api/memories").mock(return_value=httpx.Response(200, json=memories(
+        (2023, [asset(A1)]), (2021, [asset(A2, "2021-10-20T08:00:00.000Z")]))))
+    clean = sanitize_cards(ImmichPlugin(), cards())
+    assert len(clean) == 1 and [s["image"] for s in clean[0]["slides"]] == [
+        f"/api/plugins/immich/thumbnail/{A1}", f"/api/plugins/immich/thumbnail/{A2}"]
+    assert clean[0]["slides"][1]["link"] == f"{BASE}/photos/{A2}"
 
 def test_no_link_for_a_plain_http_address(configured, immich, monkeypatch):
     monkeypatch.setenv("IMMICH_URL", "http://photos.lan:2283")
@@ -206,8 +225,8 @@ def test_favourites_first_and_limit(configured, immich, monkeypatch):
         (2022, [asset(A3, "2022-10-20T10:00:00.000Z", isFavorite=True)]),
         (2021, [asset(A4, "2021-10-20T10:00:00.000Z")]),
     )))
-    result = cards()
-    assert [c["image"].rsplit("/", 1)[1] for c in result] == [A2, A3]  # only the favourites, oldest last
+    slides = cards()[0]["slides"]
+    assert [s["image"].rsplit("/", 1)[1] for s in slides] == [A2, A3]  # only the favourites, oldest last
 
 
 def test_different_years_before_a_second_photo_of_one_year(configured, immich, monkeypatch):
@@ -216,7 +235,7 @@ def test_different_years_before_a_second_photo_of_one_year(configured, immich, m
         (2023, [asset(A1, isFavorite=True), asset(A2, isFavorite=True)]),
         (2022, [asset(A3, "2022-10-20T10:00:00.000Z")]),
     )))
-    assert {c["image"].rsplit("/", 1)[1] for c in cards()} == {A1, A3}
+    assert {s["image"].rsplit("/", 1)[1] for s in cards()[0]["slides"]} == {A1, A3}
 
 
 def test_max_photos_is_clamped(configured, monkeypatch):

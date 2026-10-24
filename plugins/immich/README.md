@@ -12,7 +12,7 @@ A Familienhub plugin that shows photos from this day in earlier years on the **T
 
 ## What it does
 
-- One card per photo (up to the number you set, default 3): the title says how many years ago the photo was taken, with the photo's description (if Immich has one) and the date. Tapping the card opens the photo in Immich's web interface, but only when your Immich address is `https://`.
+- One card "On this day" with up to the number of photos you set (default 3). With several photos you swipe through them; dots show how many there are. Under each photo: how many years ago it was taken, its description (if Immich has one) and the date. Tapping a photo opens it in Immich's web interface, but only when your Immich address is `https://`. Hubs older than the swipeable cards show the first photo only.
 - Photos come from Immich's own "On this day" memories. Favourites are preferred, and different years are shown before a second photo of the same year.
 - No card when there is nothing for today, or when Immich is down or not reachable. The Today screen never shows an error because of this plugin.
 - Only photos are shown; videos are skipped.
@@ -26,7 +26,7 @@ A Familienhub plugin that shows photos from this day in earlier years on the **T
 | `IMMICH_API_KEY` | yes | An Immich API key, stored encrypted in the hub. |
 | `IMMICH_ALBUM_IDS` | no | Comma separated album IDs to limit the photos to, e.g. your family albums. The ID is the last part of the album's address in Immich (`/albums/<id>`). Empty = the whole library. |
 | `IMMICH_INCLUDE_ARCHIVED` | no | Also use archived photos. Default off. |
-| `IMMICH_MAX_PHOTOS` | no | At most this many photos (cards) per day, 1 to 5. Default 3. |
+| `IMMICH_MAX_PHOTOS` | no | At most this many photos per day, 1 to 5. Default 3. |
 
 ### Creating the API key in Immich
 
@@ -63,7 +63,7 @@ Photos stay in Immich. The hub only passes **previews** on to signed-in family m
 
 - How "today" is chosen: the hub server's local date; the photo's date is its local capture date as stored by Immich. 29 February only matches leap years.
 - Immich memories can only be asked for the key owner's whole library. With an album filter or archived photos the plugin searches by date instead (more requests, up to 15 past years, all with a short timeout). If memories are empty (e.g. switched off in Immich), the plugin falls back to this search too.
-- The Today screen allows one picture per card, so every photo is its own card (`on-this-day`, `on-this-day-2`, …). You can hide, move or resize them in the Today layout editor.
+- All photos are in one card (`on-this-day`). You can hide, move or resize it in the Today layout editor.
 - If Immich does not answer within about 3.5 s, there is no card until the next try (after two minutes).
 - Immich's API changes between versions. This plugin was written against the documented API of Immich 1.1xx/2.x (memories, search, assets) but has **not been tested against a running Immich server**, only against simulated responses. Please report differences.
 

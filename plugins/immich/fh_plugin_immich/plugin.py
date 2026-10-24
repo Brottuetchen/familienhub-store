@@ -2,7 +2,7 @@
 
 What it does:
 
-- ``today_cards``: up to N cards (default 3) "On this day, 3 years ago" with a thumbnail, from Immich's memories
+- ``today_cards``: one card "On this day" with up to N thumbnails (default 3) to swipe through, from Immich's memories
   API (``GET /api/memories``), with fallbacks for older servers (``/api/assets/memory-lane``) and for album
   filters or archived photos (``POST /api/search/metadata``, one query per past year). Cached per day.
 - ``/api/plugins/immich/thumbnail/<asset id>``: the plugin's own authenticated route that streams a preview through
@@ -397,25 +397,35 @@ def _link(cfg: _Config, asset_id: str) -> Optional[str]:
 
 
 def build_cards(cfg: _Config, photos: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
+    """One card "On this day". With several photos it carries them as ``slides`` (one swipeable card in the app);
+    ``image`` is always the first photo, so hubs without slides still show a picture."""
+    if not photos:
+        return []
     title = "On this day" if lang == "en" else "An diesem Tag"
-    cards = []
-    for index, p in enumerate(photos):
-        lines = [{"text": p["description"] or _years_text(p["years_ago"], lang),
-                  "secondary": _date_text(p["date"], lang)}]
-        if p["description"]:
-            lines.insert(0, {"text": _years_text(p["years_ago"], lang)})
-        card: Dict[str, Any] = {
-            "id": "on-this-day" if index == 0 else f"on-this-day-{index + 1}",
-            "title": f"{title}, {_years_text(p['years_ago'], lang)}",
-            "icon": "photo",
-            "lines": lines,
-            "image": f"/api/plugins/{PLUGIN_ID}/thumbnail/{p['id']}",
-        }
-        link = _link(cfg, p["id"])
-        if link:
-            card["link"] = link
-        cards.append(card)
-    return cards
+    first = photos[0]
+    card: Dict[str, Any] = {"id": "on-this-day", "icon": "photo",
+                            "image": f"/api/plugins/{PLUGIN_ID}/thumbnail/{first['id']}"}
+    link = _link(cfg, first["id"])
+    if link:
+        card["link"] = link
+    if len(photos) == 1:
+        lines = [{"text": first["description"] or _years_text(first["years_ago"], lang),
+                  "secondary": _date_text(first["date"], lang)}]
+        if first["description"]:
+            lines.insert(0, {"text": _years_text(first["years_ago"], lang)})
+        card.update(title=f"{title}, {_years_text(first['years_ago'], lang)}", lines=lines)
+        return [card]
+    slides = []
+    for p in photos:
+        secondary = " · ".join(t for t in (p["description"], _date_text(p["date"], lang)) if t)
+        slide: Dict[str, Any] = {"image": f"/api/plugins/{PLUGIN_ID}/thumbnail/{p['id']}",
+                                 "caption": _years_text(p["years_ago"], lang), "secondary": secondary or None}
+        slide_link = _link(cfg, p["id"])
+        if slide_link:
+            slide["link"] = slide_link
+        slides.append(slide)
+    card.update(title=title, badge=str(len(photos)), lines=[], slides=slides)
+    return [card]
 
 
 # --- the plugin -----------------------------------------------------------------------------------------------
@@ -425,7 +435,7 @@ class ImmichPlugin(Plugin):
         super().__init__(
             id=PLUGIN_ID,  # same as "id" in familienhub-plugin.json
             name="Immich: On this day",
-            version="1.0.0",
+            version="1.1.0",
             description="Photos from this day in earlier years, from Immich",
             capabilities=frozenset(),
             settings=(
@@ -455,7 +465,7 @@ class ImmichPlugin(Plugin):
         return None
 
     async def today_cards(self, user, db):
-        """Cards "On this day, 3 years ago", one per photo; none when there is nothing (or Immich is down)."""
+        """One card "On this day" (several photos swipeable); none when there is nothing (or Immich is down)."""
         if not COMPATIBLE:
             return []
         cfg = _Config.load()
