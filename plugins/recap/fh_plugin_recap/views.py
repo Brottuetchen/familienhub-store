@@ -48,7 +48,8 @@ def render_obsidian(data: Dict[str, Any], url: str) -> str:
              f"medien_stunden: {t.get('media_hours')}", f"serienfolgen: {jf.get('episodes', 0)}",
              f"filme: {jf.get('movies_count', 0)}", f"musik_minuten: {mu.get('minutes', 0)}",
              f"hoerbuch_stunden: {ab.get('hours', 0)}", f"podcast_stunden: {pc.get('hours', 0)}",
-             f"fotos: {ph.get('total', 0)}", "---",
+             f"fotos: {ph.get('total', 0)}", *([f"spiele_stunden: {data['games']['hours']}"] if (data.get("games") or {}).get("games") else []),
+             "---",
              f"# Rückblick {mname} {year}", "", f"**[▶ Rückblick als Story ansehen]({url})**", "",
              f"Insgesamt **{de_num(t.get('media_hours', 0))} Stunden** Medien.", ""]
     if jf.get("series"):
@@ -75,6 +76,13 @@ def render_obsidian(data: Dict[str, Any], url: str) -> str:
         lines += ["## Fotos", f"{ph['photos']} Fotos und {ph['videos']} Videos an {ph['days_with_photos']} Tagen."]
         if ph.get("places"):
             lines.append("Orte: " + ", ".join(f"{p['name']} ({p['count']})" for p in ph["places"]))
+        lines.append("")
+    ga = data.get("games") or {}
+    if ga.get("games"):
+        lines += ["## Games", f"{de_num(ga['hours'], 1)} Stunden, {ga['sessions']} Starts, {ga['games_count']} Spiele auf "
+                  f"{ga['systems_count']} Systemen" + (f", am meisten auf {ga['top_system']}." if ga.get("top_system") else "."), ""]
+        lines += [f"{i}. **{x['name']}** ({x['system']}) – {de_num(x['minutes'] / 60, 1)} h, {x['sessions']} Starts"
+                  for i, x in enumerate(ga["games"][:5], 1)]
         lines.append("")
     lines += ["## Meine Notizen", "", ""]
     return "\n".join(lines)

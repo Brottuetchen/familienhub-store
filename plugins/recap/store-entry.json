@@ -6,24 +6,25 @@
     "en": "Recap"
   },
   "summary": {
-    "de": "Monatsrückblick pro Person als Story: Serien, Musik, Hörbücher, Podcasts und Fotos.",
-    "en": "A monthly recap per person as a story: series, music, audiobooks, podcasts and photos."
+    "de": "Monatsrückblick pro Person als Story: Serien, Musik, Hörbücher, Podcasts, Fotos und Spiele.",
+    "en": "A monthly recap per person as a story: series, music, audiobooks, podcasts, photos and games."
   },
   "description": {
-    "de": "Baut am Monatsanfang für jede Person einen Rückblick als Story mit Zahlen, Postern, Fotos und Musikausschnitten. Quellen: Jellyfin (Playback Reporting), ListenBrainz, Audiobookshelf, Nextcloud GPodder Sync, Immich und Navidrome (Soundtrack). Jede Person verbindet ihre eigenen Konten; der Admin trägt nur die Serveradressen ein. Alles wird beim Bauen auf dem Hub gespeichert, die Story lädt nichts von fremden Servern. Benachrichtigung, wenn der Rückblick fertig ist. Benötigt einen Hub mit persönlichen Plugin-Einstellungen und Plugin-Seiten.",
-    "en": "Builds a story for every person at the start of the month, with figures, posters, photos and music clips. Sources: Jellyfin (Playback Reporting), ListenBrainz, Audiobookshelf, Nextcloud GPodder Sync, Immich and Navidrome (soundtrack). Everybody connects their own accounts; the admin only enters the server addresses. Everything is stored on the hub at build time, the story loads nothing from other servers. A notification tells you when your recap is ready. Needs a hub with personal plugin settings and plugin pages."
+    "de": "Baut am Monatsanfang für jede Person einen Rückblick als Story mit Zahlen, Postern, Fotos und Musikausschnitten. Quellen: Jellyfin (Playback Reporting), ListenBrainz, Audiobookshelf, Nextcloud GPodder Sync, Immich, ES-DE-Spielstatistiken und Navidrome (Soundtrack). Jede Person verbindet ihre eigenen Konten; der Admin trägt nur die Serveradressen ein. Alles wird beim Bauen auf dem Hub gespeichert, die Story lädt nichts von fremden Servern. Benachrichtigung, wenn der Rückblick fertig ist. Benötigt einen Hub mit persönlichen Plugin-Einstellungen und Plugin-Seiten.",
+    "en": "Builds a story for every person at the start of the month, with figures, posters, photos and music clips. Sources: Jellyfin (Playback Reporting), ListenBrainz, Audiobookshelf, Nextcloud GPodder Sync, Immich, ES-DE game statistics and Navidrome (soundtrack). Everybody connects their own accounts; the admin only enters the server addresses. Everything is stored on the hub at build time, the story loads nothing from other servers. A notification tells you when your recap is ready. Needs a hub with personal plugin settings and plugin pages."
   },
   "author": "Familienhub",
   "repo": "https://github.com/Brottuetchen/familienhub-store",
   "path": "plugins/recap",
   "sha": "TBD",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "screenshots": [],
   "tags": [
     "recap",
     "media",
     "music",
     "photos",
-    "story"
+    "story",
+    "games"
   ]
 }

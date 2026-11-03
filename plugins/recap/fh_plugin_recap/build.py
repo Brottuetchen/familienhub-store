@@ -37,9 +37,40 @@ def month_bounds(month: str, tz) -> Tuple[dt.datetime, dt.datetime]:
 def compute_totals(data: Dict[str, Any]) -> Dict[str, float]:
     jf, mu, ab, pc = (data.get(k) or {} for k in ("jellyfin", "music", "audiobooks", "podcasts"))
     t = {"series_hours": jf.get("series_hours", 0), "movie_hours": jf.get("movie_hours", 0),
-         "music_hours": mu.get("hours", 0), "audiobook_hours": ab.get("hours", 0), "podcast_hours": pc.get("hours", 0)}
+         "music_hours": mu.get("hours", 0), "audiobook_hours": ab.get("hours", 0), "podcast_hours": pc.get("hours", 0),
+         "games_hours": (data.get("games") or {}).get("hours", 0)}
     t["media_hours"] = round(sum(t.values()), 1)
     return t
+
+
+def snapshot_games(user_id: int, cfg: collectors.Config, tz) -> bool:
+    """Writes today's game snapshot (the device files as they are now) unless there is one already. At most one per
+    local day and person, no network, and silent: a missing mount or a full disk must never disturb the scheduler."""
+    if not cfg.games_devices:
+        return False
+    try:
+        day = dt.datetime.now(tz).date().isoformat()
+        if store.games_path(user_id, day).exists():
+            return False
+        state = collectors.read_games(cfg.games_dir, cfg.games_devices)
+        if not state:
+            return False
+        store.write_games(user_id, day, state)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def game_states(user_id: int, start, end):
+    """``(baseline, end state)`` for [start, end): the latest snapshot on or before the first day, and the earliest one
+    on or after the day the next month begins (None = use the current device files)."""
+    days = store.game_days(user_id)
+    first, after = start.date().isoformat(), end.date().isoformat()
+    before = [d for d in days if d <= first]
+    later = [d for d in days if d >= after]
+    base = store.read_games(user_id, before[-1]) if before else None
+    final = store.read_games(user_id, later[0]) if later else None
+    return base, final
 
 
 async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, redesign: bool = False) -> Dict[str, Any]:
@@ -63,6 +94,7 @@ async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, r
                 "audiobooks": lambda: collectors.collect_audiobookshelf(client, cfg, start, end, img, tz, covers),
                 "podcasts": lambda: collectors.collect_podcasts(client, cfg, start, end, img, covers),
                 "photos": lambda: collectors.collect_immich(client, cfg, start, end, img),
+                "games": lambda: collectors.collect_games(client, cfg, start, end, img, *game_states(user_id, start, end), covers),
             }
             wanted = cfg.sources()
             for key, step in steps.items():
@@ -174,4 +206,4 @@ def start(user_id: int, month: str, cfg: collectors.Config, tz, *,
     return "started"
 
 
-__all__ = ["BuildFailed", "build_month", "start", "busy", "is_running", "prev_month", "month_bounds"]
+__all__ = ["BuildFailed", "build_month", "snapshot_games", "game_states", "start", "busy", "is_running", "prev_month", "month_bounds"]

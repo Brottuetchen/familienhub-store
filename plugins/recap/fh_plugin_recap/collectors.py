@@ -12,6 +12,7 @@ import collections
 import datetime as dt
 import hashlib
 import html
+import json
 import re
 import secrets
 import xml.etree.ElementTree as ET
@@ -37,6 +38,17 @@ NAVI_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 LASTFM_PLACEHOLDER = "2a96cbd8b46e442fc41c2b86b821562f"  # the grey star image Last.fm serves for "no picture"
 COVER_ERRORS = (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError, LookupError)
 ID_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")
+STEAM_SEARCH = "https://store.steampowered.com/api/storesearch/"
+STEAM_IMAGES = "https://cdn.cloudflare.steamstatic.com/steam/apps"
+DEVICE_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+GAME_PREFIX = "game:./"
+GAME_SYSTEMS = {
+    "gba": "Game Boy Advance", "gbc": "Game Boy Color", "gb": "Game Boy", "nes": "NES", "snes": "SNES",
+    "n64": "Nintendo 64", "gc": "GameCube", "wii": "Wii", "wiiu": "Wii U", "switch": "Nintendo Switch",
+    "nds": "Nintendo DS", "3ds": "Nintendo 3DS", "psx": "PlayStation", "ps2": "PlayStation 2", "ps3": "PlayStation 3",
+    "psp": "PSP", "psvita": "PS Vita", "xbox": "Xbox", "xbox360": "Xbox 360", "steam": "Steam", "windows": "PC",
+    "dreamcast": "Dreamcast", "megadrive": "Mega Drive",
+}
 
 
 @dataclass
@@ -58,6 +70,9 @@ class Config:
     nextcloud_url: str = ""
     nextcloud_user: str = ""
     nextcloud_password: str = ""
+    games_dir: str = "/app/external/games"
+    roms_dir: str = "/app/external/roms"
+    games_devices: Tuple[str, ...] = ()
 
     def sources(self) -> List[str]:
         """The statistics sources this person has connected (the soundtrack alone is not one)."""
@@ -72,6 +87,8 @@ class Config:
             found.append("podcasts")
         if self.immich_url and self.immich_key:
             found.append("photos")
+        if self.games_devices:
+            found.append("games")
         return found
 
     @property
@@ -691,6 +708,210 @@ async def collect_immich(client, cfg: Config, start, end, img: Path) -> Dict[str
         "days_with_photos": len({a["localDateTime"][:10] for a in items}),
         "highlights": highlights,
     }
+
+
+# --- Games (ES-DE play statistics) -----------------------------------------------------------------------------
+# ES-DE keeps one gamelist per system with the *cumulative* play time and launch count of every game. One file per
+# device (``<games_dir>/<device>.json``) is mounted read-only into the hub. The numbers of a month are therefore a
+# difference between two states: see ``games_delta``.
+
+def parse_devices(value: Any) -> Tuple[str, ...]:
+    """``"pc, deck"`` -> ``("pc", "deck")``: only plain file stems, no duplicates."""
+    out: List[str] = []
+    for part in str(value or "").split(","):
+        part = part.strip()
+        if DEVICE_RE.match(part) and part not in out:
+            out.append(part)
+    return tuple(out)
+
+
+def system_label(system: str) -> str:
+    return GAME_SYSTEMS.get(system.lower(), system.upper())
+
+
+def _strip_ext(name: str) -> str:
+    """Drops a file extension (letters and digits, at most 7: ``.iso``, ``.xci``, ``.desktop``), not ``Vol.2``."""
+    return re.sub(r"\.(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{1,7}$", "", name)
+
+
+def clean_game_name(rel: str) -> str:
+    """Display name of a game from its path inside the system folder: the folder name for folder games, else the
+    file name; without extension and without tags like ``(Europe)``, ``(En,Fr,De)``, ``(Rev 2)`` or ``[!]``."""
+    parts = [x for x in str(rel).split("/") if x and x != "."]
+    if not parts:
+        return ""
+    name = parts[-2] if len(parts) > 1 else parts[0]
+    if len(parts) == 1:
+        name = _strip_ext(name)
+    name = re.sub(r"\s*[\(\[][^)\]]*[\)\]]", "", name)
+    name = re.sub(r"\s+", " ", name).strip(" -")
+    match = re.match(r"^(.+?), (The|A|An|Der|Die|Das) - (.+)$", name) or re.match(r"^(.+?), (The|A|An|Der|Die|Das)$", name)
+    if match:  # "Simpsons, The - Hit & Run" -> "The Simpsons - Hit & Run"
+        name = f"{match.group(2)} {match.group(1)}" + (f" - {match.group(3)}" if match.lastindex == 3 else "")
+    return name or parts[-1]
+
+
+def game_cover_candidates(system: str, rel: str) -> List[str]:
+    """Where RomM's exported box art may lie below the roms folder, most specific first."""
+    parts = [x for x in str(rel).split("/") if x and x != "."]
+    if not parts:
+        return []
+    stem = _strip_ext(parts[-1])
+    found = []
+    if len(parts) > 1:
+        found.append(f"{system}/covers/{parts[-2]}/{stem}.png")
+        found.append(f"{system}/covers/{parts[-2]}.png")
+    found.append(f"{system}/covers/{stem}.png")
+    return list(dict.fromkeys(found))
+
+
+def local_game_cover(roms_dir: str, system: str, rel: str, img: Path, name: str) -> Optional[str]:
+    """Copies the exported cover (if there is one) into the month's image folder."""
+    if not DEVICE_RE.match(system):  # a system is a plain folder name, never a path
+        return None
+    root = Path(roms_dir)
+    for candidate in game_cover_candidates(system, rel):
+        path = root / candidate
+        try:
+            if ".." in Path(candidate).parts or not path.is_file() or path.stat().st_size > MAX_IMAGE_BYTES:
+                continue
+            data = path.read_bytes()
+        except OSError:
+            continue
+        ext = sniff_image(data)
+        if ext is None or len(data) < 500:
+            continue
+        (img / f"{name}.{ext}").write_bytes(data)
+        return f"img/{name}.{ext}"
+    return None
+
+
+async def steam_cover(client: httpx.AsyncClient, img: Path, term: str, name: str) -> Optional[str]:
+    """Box art from the public Steam store (no key): the first search hit's portrait, else its header picture."""
+    res = await get_json(client, STEAM_SEARCH, params={"term": term, "l": "german", "cc": "DE"})
+    items = res.get("items") or []
+    app_id = str((items[0] if items else {}).get("id") or "")
+    if not app_id.isdigit():
+        return None
+    for file in ("library_600x900.jpg", "header.jpg"):
+        path = await save_image(client, f"{STEAM_IMAGES}/{app_id}/{file}", img, name)
+        if path:
+            return path
+    return None
+
+
+def read_games(games_dir: str, devices) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """``{device: {"<system>/<relative path>": {"playtime", "playcount", "lastplayed"}}}`` of every readable device
+    file. Anything that is not a ``game:./`` entry, and missing or odd fields, is skipped without a fuss."""
+    out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for device in devices:
+        if not DEVICE_RE.match(device):
+            continue
+        try:
+            raw = json.loads((Path(games_dir) / f"{device}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(raw, dict):
+            continue
+        games: Dict[str, Dict[str, Any]] = {}
+        for system, entries in raw.items():
+            if not isinstance(entries, dict) or not isinstance(system, str):
+                continue
+            for key, entry in entries.items():
+                if not (isinstance(key, str) and key.startswith(GAME_PREFIX) and isinstance(entry, dict)):
+                    continue
+                last = (entry.get("flags") or {}).get("lastplayed") if isinstance(entry.get("flags"), dict) else None
+                last = last[0] if isinstance(last, list) and last else last
+                games[f"{system}/{key[len(GAME_PREFIX):]}"] = {
+                    "playtime": _whole(entry.get("playtime")), "playcount": _whole(entry.get("playcount")),
+                    "lastplayed": last if isinstance(last, str) else None}
+        out[device] = games
+    return out
+
+
+def _whole(value: Any) -> int:
+    try:
+        return max(0, int(float(value)))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _played_between(stamp: Any, start, end) -> bool:
+    """Is the ES-DE time stamp (``20261025T114002``, local time) in [start, end)?"""
+    try:
+        when = dt.datetime.strptime(str(stamp), "%Y%m%dT%H%M%S")
+    except ValueError:
+        return False
+    return start.replace(tzinfo=None) <= when < end.replace(tzinfo=None)
+
+
+def games_delta(base: Optional[Dict[str, Any]], final: Dict[str, Any], start, end) -> Dict[str, Dict[str, Any]]:
+    """Per game what was played in [start, end): the end state minus the baseline, summed over all devices.
+
+    ``base`` and ``final`` are ``{device: {game key: record}}`` (``base`` None = no snapshot at all). Devices are
+    compared one by one, so a device that appears later does not count its whole history as one month. A game is in
+    when its playtime grew; for a device without a baseline (nothing to subtract) it is in when it was last played
+    within the month. That first month is best effort: the cumulative numbers also hold earlier play, and the end
+    state may already hold play from the next month (the first snapshot is taken after the fact)."""
+    out: Dict[str, Dict[str, Any]] = {}
+    for device, games in final.items():
+        before = (base or {}).get(device)
+        for key, now in games.items():
+            old = (before or {}).get(key)
+            seconds = now["playtime"] - (old["playtime"] if old else 0)
+            launches = max(0, now["playcount"] - (old["playcount"] if old else 0))
+            if before is not None:
+                if seconds <= 0:
+                    continue
+            elif not _played_between(now.get("lastplayed"), start, end) or seconds <= 0:
+                continue
+            item = out.setdefault(key, {"seconds": 0, "sessions": 0, "new": True})
+            item["seconds"] += seconds
+            item["sessions"] += launches
+            item["new"] = item["new"] and old is None
+    return out
+
+
+async def collect_games(client, cfg: Config, start, end, img: Path, base: Optional[Dict[str, Any]],
+                        final: Optional[Dict[str, Any]] = None, covers: Optional[Covers] = None) -> Dict[str, Any]:
+    """The games of the month. ``final`` is the state at the end of the month (the first snapshot of the next month),
+    else the current device files."""
+    covers = covers or Covers()
+    if final is None:
+        final = read_games(cfg.games_dir, cfg.games_devices)
+    if not final:
+        raise LookupError("No game statistics readable")
+    played = games_delta(base, final, start, end)
+    rows = []
+    for key, v in played.items():
+        system, rel = key.split("/", 1)
+        rows.append({"name": clean_game_name(rel), "system": system_label(system), "minutes": round(v["seconds"] / 60),
+                     "sessions": v["sessions"], "cover": None, "new": v["new"], "_key": key})
+    rows = [x for x in rows if x["minutes"] > 0 and x["name"]]
+    rows.sort(key=lambda x: (-x["minutes"], x["name"].casefold()))
+    top = rows[:8]
+
+    async def game_cover(row):
+        system, rel = row["_key"].split("/", 1)
+        file_name = f"gm-{slug(row['name'])}"
+        path = local_game_cover(cfg.roms_dir, system, rel, img, file_name)
+        if path:
+            return path
+        try:
+            return await steam_cover(client, img, row["name"], file_name)
+        except COVER_ERRORS:
+            return None
+
+    await covers.fill([(x, "cover", (lambda x=x: game_cover(x))) for x in top])
+    for x in rows:
+        x.pop("_key")
+    systems: collections.Counter = collections.Counter()
+    for x in rows:
+        systems[x["system"]] += x["minutes"]
+    return {"hours": round(sum(x["minutes"] for x in rows) / 60, 1), "minutes": sum(x["minutes"] for x in rows),
+            "sessions": sum(x["sessions"] for x in rows), "games_count": len(rows), "systems_count": len(systems),
+            "systems": [{"name": n, "minutes": m} for n, m in systems.most_common()],
+            "top_system": systems.most_common(1)[0][0] if systems else None, "games": top}
 
 
 # --- Soundtrack from Navidrome (Subsonic API) ------------------------------------------------------------------

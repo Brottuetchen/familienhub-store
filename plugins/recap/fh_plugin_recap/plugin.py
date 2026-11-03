@@ -4,7 +4,7 @@ What it does:
 
 - Every month (scheduled job) it builds, for each person who connected at least one source in *More -> My
   connections*, a story page about the previous month: Jellyfin viewing (Playback Reporting), ListenBrainz music,
-  Audiobookshelf, podcasts (Nextcloud GPodder Sync) and Immich photos, with a soundtrack from Navidrome.
+  Audiobookshelf, podcasts (Nextcloud GPodder Sync), Immich photos and games (ES-DE play statistics), with a soundtrack from Navidrome.
 - The story is a page of the plugin (``pages``): the app opens it through a signed, short-lived link. Posters,
   photos, covers and audio clips are downloaded at build time, so the story loads nothing from other servers.
 - ``POST /api/plugins/recap/build`` builds a month on demand, ``GET /api/plugins/recap/months`` lists the months,
@@ -53,10 +53,10 @@ COMPATIBLE = get_personal_setting is not None and hasattr(Plugin, "page") and ha
 TEST_TIMEOUT = 6.0
 
 GLOBAL_KEYS = ("RECAP_JELLYFIN_URL", "RECAP_JELLYFIN_TOKEN", "RECAP_ABS_URL", "RECAP_IMMICH_URL",
-               "RECAP_NAVIDROME_URL", "RECAP_NEXTCLOUD_URL")
+               "RECAP_NAVIDROME_URL", "RECAP_NEXTCLOUD_URL", "RECAP_GAMES_DIR", "RECAP_ROMS_DIR")
 PERSONAL_KEYS = ("RECAP_JELLYFIN_USER", "RECAP_LISTENBRAINZ_USER", "RECAP_LISTENBRAINZ_TOKEN", "RECAP_ABS_TOKEN",
                  "RECAP_IMMICH_KEY", "RECAP_NAVIDROME_USER", "RECAP_NAVIDROME_PASSWORD", "RECAP_NEXTCLOUD_USER",
-                 "RECAP_NEXTCLOUD_APP_PASSWORD")
+                 "RECAP_NEXTCLOUD_APP_PASSWORD", "RECAP_GAMES_DEVICES")
 
 router = APIRouter(prefix=f"/api/plugins/{PLUGIN_ID}", tags=[PLUGIN_ID])
 
@@ -82,7 +82,9 @@ def _global_urls() -> Dict[str, str]:
             "abs_url": _url(get_setting("RECAP_ABS_URL")),
             "immich_url": _url(get_setting("RECAP_IMMICH_URL"), strip_api=True),
             "navidrome_url": _url(get_setting("RECAP_NAVIDROME_URL")),
-            "nextcloud_url": _url(get_setting("RECAP_NEXTCLOUD_URL"))}
+            "nextcloud_url": _url(get_setting("RECAP_NEXTCLOUD_URL")),
+            "games_dir": str(get_setting("RECAP_GAMES_DIR") or "").strip() or "/app/external/games",
+            "roms_dir": str(get_setting("RECAP_ROMS_DIR") or "").strip() or "/app/external/roms"}
 
 
 def load_config(user_id: int, overrides: Optional[Dict[str, str]] = None) -> collectors.Config:
@@ -100,6 +102,7 @@ def load_config(user_id: int, overrides: Optional[Dict[str, str]] = None) -> col
         abs_token=mine("RECAP_ABS_TOKEN"), immich_key=mine("RECAP_IMMICH_KEY"),
         navidrome_user=mine("RECAP_NAVIDROME_USER"), navidrome_password=mine("RECAP_NAVIDROME_PASSWORD"),
         nextcloud_user=mine("RECAP_NEXTCLOUD_USER"), nextcloud_password=mine("RECAP_NEXTCLOUD_APP_PASSWORD"),
+        games_devices=collectors.parse_devices(mine("RECAP_GAMES_DEVICES")),
     )
 
 
@@ -201,8 +204,8 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.1.1",
-            description="A monthly recap per person: series, music, audiobooks, podcasts and photos as a story.",
+            id=PLUGIN_ID, name="Recap", version="1.2.0",
+            description="A monthly recap per person: series, music, audiobooks, podcasts, photos and games as a story.",
             capabilities=frozenset(),
             settings=(
                 Setting("RECAP_JELLYFIN_URL", "Jellyfin address", required=False, type="url"),
@@ -211,6 +214,10 @@ class RecapPlugin(Plugin):
                 Setting("RECAP_IMMICH_URL", "Immich address", required=False, type="url"),
                 Setting("RECAP_NAVIDROME_URL", "Navidrome address", required=False, type="url"),
                 Setting("RECAP_NEXTCLOUD_URL", "Nextcloud address", required=False, type="url"),
+                Setting("RECAP_GAMES_DIR", "Folder with the ES-DE game statistics", required=False,
+                        default="/app/external/games"),
+                Setting("RECAP_ROMS_DIR", "Folder with the exported game covers", required=False,
+                        default="/app/external/roms"),
             ),
             personal_settings=(
                 Setting("RECAP_JELLYFIN_USER", "Jellyfin user name", required=False),
@@ -223,6 +230,7 @@ class RecapPlugin(Plugin):
                 Setting("RECAP_NEXTCLOUD_USER", "Nextcloud user name", required=False),
                 Setting("RECAP_NEXTCLOUD_APP_PASSWORD", "Nextcloud app password", secret=True, required=False,
                         type="password"),
+                Setting("RECAP_GAMES_DEVICES", "Game devices (ES-DE)", required=False),
             ),
             pages=(Page(PAGE_ID, {"de": "Rückblicke", "en": "Recaps"}, "celebration"),),
         )
@@ -245,6 +253,11 @@ class RecapPlugin(Plugin):
 
         month = last_month()
         ids = [u.id for u in db.query(User).filter(User.is_active == True).order_by(User.id).all()]  # noqa: E712
+        for uid in ids:  # the daily game snapshot (cheap, no network); before anything that may return early
+            try:
+                build.snapshot_games(uid, load_config(uid), _tz())
+            except Exception:  # noqa: BLE001 - never disturbs the builds below
+                pass
         for uid in ids:  # a notification that did not go out yet (rate limit, restart in between)
             data = store.read_snapshot(uid, month)
             if data and not data.get("notified") and not data.get("empty") and store.has_story(uid, month):
@@ -360,6 +373,11 @@ class RecapPlugin(Plugin):
                         r.raise_for_status()
                         return "connected"
                     lines.append(await _check(client, "Nextcloud", nextcloud))
+            if cfg.games_devices:
+                async def games():
+                    readable = collectors.read_games(cfg.games_dir, cfg.games_devices)
+                    return "connected" if readable else "no device file readable (check the device names)"
+                lines.append(await _check(client, "Games", games))
         if not lines:
             return {"ok": True, "level": "info", "message": "Nothing to test yet. Fill in at least one account."}
         failed = [ln for ln in lines if not ln.endswith("connected")]

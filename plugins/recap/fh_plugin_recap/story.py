@@ -46,7 +46,10 @@ PALETTES = {
 SHAPES = ["blobs", "stripes", "rings", "glow"]
 TYPES = ["bold", "caps", "serif"]
 VARIANTS = {"intro": 3, "total": 3, "series": 3, "binge": 2, "movies": 2, "music": 3, "books": 2, "pods": 2,
-            "photos": 3, "outro": 2}
+            "photos": 3, "games": 3, "outro": 2}
+# Added after the first releases: chosen from an own random stream, so the choices for all other slides stay as they were
+LATE_SLIDES = ("games",)
+GAME_MARATHON_MINUTES = 600
 KICKERS = {
     "intro": ["Dein Rückblick", "Das war dein", "Zurückgespult", "Zeit für den Rückblick"],
     "total": ["Insgesamt", "Alles zusammen", "Unterm Strich", "Die große Zahl"],
@@ -57,6 +60,7 @@ KICKERS = {
     "books": ["Hörbücher", "Zum Zuhören", "Kopfkino"],
     "pods": ["Podcasts", "Auf die Ohren", "Gesprächsstoff"],
     "photos": ["Festgehalten", "Deine Momente", "Durch die Linse", "Erinnerungen"],
+    "games": ["Game on", "Controller in der Hand", "Zocker-Bilanz", "Level-Up", "Noch ein Versuch"],
     "outro": ["Dein {m} {y}", "Das war {m}", "{m} in Zahlen"],
 }
 
@@ -122,14 +126,20 @@ def choose_design(data, history):
         rest = [o for o in options if o != avoid] or list(options)
         return rnd.choice(rest)
 
-    return {
+    design = {
         "palette": palette,
         "offset": rnd.randrange(6),
         "shape": pick(SHAPES, last.get("shape")),
         "type": pick(TYPES, last.get("type")),
-        "variants": {k: pick(range(n), (last.get("variants") or {}).get(k)) for k, n in VARIANTS.items()},
-        "texts": {k: pick(range(len(v)), (last.get("texts") or {}).get(k)) for k, v in KICKERS.items()},
+        "variants": {k: pick(range(n), (last.get("variants") or {}).get(k)) for k, n in VARIANTS.items() if k not in LATE_SLIDES},
+        "texts": {k: pick(range(len(v)), (last.get("texts") or {}).get(k)) for k, v in KICKERS.items() if k not in LATE_SLIDES},
     }
+    late = random.Random(data["month"] + str(data.get("seed", "")) + "late")
+    for k in LATE_SLIDES:
+        avoid_v, avoid_t = (last.get("variants") or {}).get(k), (last.get("texts") or {}).get(k)
+        design["variants"][k] = late.choice([o for o in range(VARIANTS[k]) if o != avoid_v] or list(range(VARIANTS[k])))
+        design["texts"][k] = late.choice([o for o in range(len(KICKERS[k])) if o != avoid_t] or list(range(len(KICKERS[k]))))
+    return design
 
 
 def highlights(data, history):
@@ -173,6 +183,13 @@ def highlights(data, history):
             out["streak"] = {"days": best, "from": best_start.isoformat()}
     if pc.get("podcasts") and not any((h.get("podcasts") or {}).get("podcasts") for h in history):
         out["first_podcasts"] = True
+    ga = data.get("games") or {}
+    if ga.get("games"):
+        if not any((h.get("games") or {}).get("games") for h in history):
+            out["first_games"] = True
+        top = ga["games"][0]
+        if top["minutes"] >= GAME_MARATHON_MINUTES:  # one game for ten hours or more in a single month
+            out["game_marathon"] = {"name": top["name"], "hours": round(top["minutes"] / 60, 1), "sessions": top["sessions"]}
     return out
 
 
@@ -199,6 +216,15 @@ def get(d, *path):
         else:
             return None
     return d
+
+
+def game_time(minutes):
+    return f"{minutes} Min." if minutes < 60 else f"{de_num(minutes / 60, 1)} h"
+
+
+def game_meta(x):
+    starts = f" · {x['sessions']} {'Start' if x['sessions'] == 1 else 'Starts'}" if x.get("sessions") else ""
+    return f"{e(x.get('system') or '')} · {game_time(x['minutes'])}{starts}"
 
 
 def year(x):
@@ -236,9 +262,10 @@ def render(data, prev, history):
     y, m = map(int, data["month"].split("-"))
     mname = MONTHS[m - 1]
     jf, mu, ab, pc, ph, t = (data.get(k) or {} for k in ("jellyfin", "music", "audiobooks", "podcasts", "photos", "totals"))
+    ga = data.get("games") or {}
     P = lambda *p: get(prev, *p) if prev else None  # noqa: E731
-    V, T = d["variants"], d["texts"]
-    kick = lambda k: f'<p class="kicker">{e(KICKERS[k][T[k]].format(m=mname, y=y))}</p>'  # noqa: E731
+    V, T = d["variants"], d["texts"]  # designs stored before a slide type existed lack its entries: first variant and text
+    kick = lambda k: f'<p class="kicker">{e(KICKERS[k][T.get(k, 0)].format(m=mname, y=y))}</p>'  # noqa: E731
     content = []  # (key, weight, html, backdrop image)
 
     def add(key, weight, inner, backdrop=None):
@@ -246,7 +273,8 @@ def render(data, prev, history):
 
     # Intro
     pairs = [(s.get("poster"), s["name"]) for s in jf.get("series") or []] + [(x.get("poster"), x["name"]) for x in jf.get("movies") or []] \
-        + [(x.get("cover"), x["name"]) for x in mu.get("top_tracks") or []] + [(x.get("cover"), x["title"]) for x in ab.get("books") or []]
+        + [(x.get("cover"), x["name"]) for x in mu.get("top_tracks") or []] + [(x.get("cover"), x["title"]) for x in ab.get("books") or []] \
+        + [(x.get("cover"), x["name"]) for x in ga.get("games") or []]
     images = [p for p in pairs if p[0]][:6]
     if images:  # a few missing pictures become placeholder tiles, so the collage keeps its shape
         images += [p for p in pairs if not p[0]][:max(0, 6 - len(images))]
@@ -262,7 +290,7 @@ def render(data, prev, history):
 
     # Total
     parts = [("Serien", t["series_hours"]), ("Filme", t["movie_hours"]), ("Musik", t["music_hours"]),
-             ("Hörbücher", t["audiobook_hours"]), ("Podcasts", t["podcast_hours"])]
+             ("Hörbücher", t["audiobook_hours"]), ("Podcasts", t["podcast_hours"]), ("Games", t.get("games_hours", 0))]
     parts = [(n, v) for n, v in parts if v]
     mx = max([v for _, v in parts] + [1])
     tot = t["media_hours"] or 1
@@ -413,6 +441,34 @@ def render(data, prev, history):
             body = '<div class="grid">' + "".join(f'<figure><img src="{e(x["img"])}" alt="" loading="lazy"><figcaption>{cap(x)}</figcaption></figure>' for x in hs) + "</div>"
         add("photos", ph["total"] / 20, f'{head}{info}{body}{delta(ph["total"], P("photos", "total"))}')
 
+    # Games
+    if ga.get("games"):
+        gs = ga["games"][:5]
+        top = gs[0]
+        n = ga["games_count"]
+        gv = V.get("games", 0)
+        dl = delta(ga["minutes"], P("games", "minutes"))
+        news = [x["name"] for x in gs if x.get("new")]
+        extra = (f'<p class="foot">Zum ersten Mal Spiele in deinem Rückblick.</p>' if hl.get("first_games")
+                 else f'<p class="foot">Neu im Regal: {", ".join(e(x) for x in news[:3])}.</p>' if news and len(news) < len(gs) else "")
+        big = f'<p class="big">{count(ga["hours"], 1)}<small> Stunden gespielt</small></p>'
+        sys_txt = (f'{n} {"Spiel" if n == 1 else "Spiele"} auf {ga["systems_count"]} {"System" if ga["systems_count"] == 1 else "Systemen"}'
+                   f', am meisten auf <b>{e(ga["top_system"])}</b>.')
+        rows = "".join(f'<li>{img(x.get("cover"), "th", x["name"])}<b>{e(x["name"])}</b><span>{game_meta(x)}</span></li>' for x in gs)
+        if gv == 1 and top.get("cover"):
+            add("games", t.get("games_hours", 0), f'{kick("games")}{big}<p class="lead">{sys_txt}</p>'
+                f'<ol class="list thumbs">{rows}</ol>{extra}{dl}', top["cover"])
+        elif gv == 2 and len(gs) >= 3:
+            pod = "".join(f'<figure class="p{k + 1}">{img(x.get("cover"), "", x["name"])}<b>{k + 1}</b><figcaption>{e(x["name"])}'
+                          f'<span>{game_time(x["minutes"])}</span></figcaption></figure>' for k, x in enumerate(gs[:3]))
+            add("games", t.get("games_hours", 0), f'{kick("games")}{big}<div class="podium">{pod}</div>'
+                f'<p class="foot">{sys_txt}</p>{extra}{dl}')
+        else:
+            fan = "".join(f'<figure style="--i:{k};--n:{len(gs)}">{img(x.get("cover"), "", x["name"])}</figure>' for k, x in enumerate(gs))
+            add("games", t.get("games_hours", 0), f'{kick("games")}{big}<div class="fan">{fan}</div>'
+                f'<p class="lead">Am längsten gespielt: <b>{e(top["name"])}</b> ({game_time(top["minutes"])}).</p>'
+                f'<p class="foot">{sys_txt}</p>{extra}{dl}')
+
     # Highlight slides
     special = {}
     if hl.get("record"):
@@ -436,6 +492,13 @@ def render(data, prev, history):
         special.setdefault("photos", []).append(("trip", f'<p class="kicker">Unterwegs</p><p class="big">{count(tp[0]["km"])}<small> km</small></p>'
                                                  f'<p class="lead">So weit weg von {e(hl["trip"]["home"])} waren deine Fotos, '
                                                  f'bis nach <b>{e(tp[0]["name"])}</b>.</p><ol class="list plain">{li}</ol>', None))
+    if hl.get("game_marathon"):
+        gm = hl["game_marathon"]
+        cover = (ga.get("games") or [{}])[0].get("cover")
+        starts = f" in {gm['sessions']} {'Start' if gm['sessions'] == 1 else 'Starts'}" if gm.get("sessions") else ""
+        special.setdefault("games", []).append(("marathon", f'<p class="kicker">Dauerbrenner</p><p class="big">{count(gm["hours"], 1)}<small> Stunden</small></p>'
+                                                f'<h2 class="title">{e(gm["name"])}</h2><p class="lead">So lange hast du dieses Spiel in einem Monat gespielt{starts}.</p>'
+                                                f'{img(cover, "poster tilt") if cover else ""}', None))
     if hl.get("streak"):
         sd = dt.date.fromisoformat(hl["streak"]["from"])
         special.setdefault("binge", []).append(("streak", f'<p class="kicker">Am Stück</p><p class="big">{count(hl["streak"]["days"])}<small> Tage</small></p>'
@@ -454,7 +517,7 @@ def render(data, prev, history):
     for key, _, inner, bd in order:
         slides.append((key, inner, bd))
         slides += [(k, h, b) for k, h, b in special.get(key, [])]
-    for key in ("series", "binge", "music", "photos"):
+    for key in ("series", "binge", "music", "photos", "games"):
         if key in special and not any(c[0] == key for c in order):
             slides += [(k, h, b) for k, h, b in special[key]]
 
@@ -462,8 +525,10 @@ def render(data, prev, history):
     facts = [("Stunden Medien", de_num(t["media_hours"])), ("Serienfolgen", jf.get("episodes", 0)),
              ("Filme", jf.get("movies_count", 0)), ("Musik-Minuten", de_num(mu.get("minutes", 0))),
              ("Hörbuch-Stunden", de_num(ab.get("hours", 0), 1)), ("Fotos & Videos", ph.get("total", 0))]
+    if ga.get("games"):
+        facts += [("Spiele", ga["games_count"]), ("Stunden gespielt", de_num(ga["hours"], 1))]
     tops = [("Serie", get(jf, "series", 0, "name")), ("Künstler", get(mu, "top_artists", 0, "name")),
-            ("Hörbuch", get(ab, "books", 0, "title")), ("Podcast", get(pc, "podcasts", 0, "title"))]
+            ("Hörbuch", get(ab, "books", 0, "title")), ("Podcast", get(pc, "podcasts", 0, "title")), ("Spiel", get(ga, "games", 0, "name"))]
     if V["outro"] == 1:
         rows = "".join(f'<li><span>{k}</span><b>{v}</b></li>' for k, v in facts) + '<li class="sep"></li>' + \
             "".join(f'<li><span>Top-{k}</span><b>{e(v)}</b></li>' for k, v in tops if v)
