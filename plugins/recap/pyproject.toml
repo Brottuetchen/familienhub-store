@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "familienhub-plugin-recap"
-version = "1.2.2"
+version = "1.2.3"
 description = "Familienhub plugin: a monthly recap per person as a story page"
 requires-python = ">=3.12"
 license = { text = "MIT" }

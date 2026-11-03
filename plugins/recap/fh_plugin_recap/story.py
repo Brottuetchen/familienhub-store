@@ -556,17 +556,14 @@ def render(data, prev, history):
     # Colours, music and assembly
     sets = PALETTES[d["palette"]]["sets"]
     clips = data.get("soundtrack") or []
-    others, n = clips[1:] or clips, 0
+    others = iter(clips[1:] or clips)  # every slide its own song; when they run out the previous one plays on, never a repeat
     html_slides = []
     for k, (key, inner, backdrop) in enumerate(slides):
         bg, ac, b1, b2 = sets[(k + d["offset"]) % len(sets)]
         attr = f' style="--bg:{bg};--accent:{ac};--blob:{b1};--blob2:{b2}"'
         label = ""
-        if clips:
-            if key == "music":
-                c = clips[0]
-            else:
-                c, n = others[n % len(others)], n + 1
+        c = clips[0] if clips and key == "music" else next(others, None)
+        if c:
             attr += f' data-clip="{e(c["src"])}"'
             label = f'<p class="np">♪ {e(c["title"])} · {e(c["artist"])}</p>'
         bd = f'<div class="bd" style="background-image:url(\'{e(backdrop)}\')"></div>' if backdrop else ""

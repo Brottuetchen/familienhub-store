@@ -484,3 +484,40 @@ def test_design_is_not_changed_by_the_covers():
     for d in (plain, with_images):
         d["highlights"] = story.highlights(d, [])
     assert story.choose_design(plain, []) == story.choose_design(with_images, [])
+
+
+def _clips(n):
+    return [{"src": f"img/clip-{i:02d}.mp3", "title": f"Song {i}", "artist": "Band"} for i in range(n)]
+
+
+def _slide_clips(page):
+    return re.findall(r'<section class="slide s-(\w+)[^"]*"[^>]*?data-clip="([^"]+)"', page)
+
+
+@pytest.mark.parametrize("count", [3, 20])
+def test_no_song_repeats_across_slides(count):
+    data = snapshot_data()
+    data["soundtrack"] = _clips(count)
+    data["highlights"] = story.highlights(data, [])
+    data["design"] = story.choose_design(data, [])
+    page = story.render(data, None, [])
+    used = [src for _, src in _slide_clips(page)]
+    assert used and len(used) == len(set(used))  # never the same song twice
+    assert dict(_slide_clips(page)).get("music") == "img/clip-00.mp3"
+    assert _slide_clips(page)[0][0] == "intro"  # the story starts with sound
+    if count == 3:  # more slides than songs: the rest carries no clip, so the last song plays on
+        assert page.count("<section") > len(used)
+
+
+def test_a_single_clip_still_starts_the_story_with_sound():
+    data = snapshot_data()
+    data["soundtrack"] = _clips(1)
+    data["highlights"] = story.highlights(data, [])
+    data["design"] = story.choose_design(data, [])
+    clips = _slide_clips(story.render(data, None, []))
+    assert clips[0] == ("intro", "img/clip-00.mp3")
+
+
+def test_soundtrack_collects_enough_clips_for_every_slide():
+    from fh_plugin_recap import collectors
+    assert collectors.CLIP_COUNT >= 18
