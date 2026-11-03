@@ -7,6 +7,7 @@ Layout below the hub's data directory (no database tables)::
         2026-10.attempts.json   failed build attempts (removed after a success)
         2026-10/index.html      the story
         2026-10/img/*.jpg|png|webp|mp3   posters, photos, covers, soundtrack clips
+        games/2026-10-31.json   daily state of the game statistics (cumulative play time per device and game)
 
 Everything a person can ask for through a page link is mapped to one of these files by *building* the path from
 validated parts, never by joining what the browser sent.
@@ -21,6 +22,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+DAY_RE = re.compile(r"^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
 MONTH_RE = re.compile(r"^(20\d\d)-(0[1-9]|1[0-2])$")
 ASSET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.(jpg|png|webp|mp3)$")
 CONTENT_TYPES = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp", "mp3": "audio/mpeg"}
@@ -111,6 +113,31 @@ def history(user_id: int, before: str) -> List[Dict[str, Any]]:
             if snap and snap.get("month") == name[:-5] and not snap.get("empty"):
                 out.append(snap)
     return out
+
+
+# --- daily game snapshots (ES-DE only keeps cumulative numbers, a month is the difference of two days) -----------
+
+def games_path(user_id: int, day: str) -> Path:
+    if not DAY_RE.match(day):
+        raise ValueError("bad day")
+    return user_dir(user_id) / "games" / f"{day}.json"
+
+
+def game_days(user_id: int) -> List[str]:
+    """The days that have a game snapshot, oldest first."""
+    try:
+        names = os.listdir(user_dir(user_id) / "games")
+    except OSError:
+        return []
+    return sorted(n[:-5] for n in names if n.endswith(".json") and DAY_RE.match(n[:-5]))
+
+
+def read_games(user_id: int, day: str) -> Optional[Dict[str, Any]]:
+    return read_json(games_path(user_id, day))
+
+
+def write_games(user_id: int, day: str, data: Dict[str, Any]) -> None:
+    _atomic_write(games_path(user_id, day), json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
 # --- failed attempts (so a broken month is not retried every hour) ---------------------------------------------

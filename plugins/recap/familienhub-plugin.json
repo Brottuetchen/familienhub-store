@@ -4,10 +4,10 @@
     "de": "Rückblick",
     "en": "Recap"
   },
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": {
-    "de": "Ein Monatsrückblick pro Person als Story (wie bei Musikdiensten zum Jahresende): Serien und Filme aus Jellyfin, Musik aus ListenBrainz, Hörbücher aus Audiobookshelf, Podcasts über Nextcloud, Fotos aus Immich, dazu Ausschnitte aus Navidrome als Soundtrack. Jede Person verbindet ihre eigenen Konten unter „Meine Verbindungen“.",
-    "en": "A monthly recap per person as a story (like a music service's year in review): series and films from Jellyfin, music from ListenBrainz, audiobooks from Audiobookshelf, podcasts through Nextcloud, photos from Immich, with clips from Navidrome as the soundtrack. Everybody connects their own accounts under My connections."
+    "de": "Ein Monatsrückblick pro Person als Story (wie bei Musikdiensten zum Jahresende): Serien und Filme aus Jellyfin, Musik aus ListenBrainz, Hörbücher aus Audiobookshelf, Podcasts über Nextcloud, Fotos aus Immich, Spielzeiten aus ES-DE, dazu Ausschnitte aus Navidrome als Soundtrack. Jede Person verbindet ihre eigenen Konten unter „Meine Verbindungen“.",
+    "en": "A monthly recap per person as a story (like a music service's year in review): series and films from Jellyfin, music from ListenBrainz, audiobooks from Audiobookshelf, podcasts through Nextcloud, photos from Immich, game play time from ES-DE, with clips from Navidrome as the soundtrack. Everybody connects their own accounts under My connections."
   },
   "author": "Familienhub",
   "homepage": "https://github.com/Brottuetchen/familienhub-store",
@@ -97,6 +97,36 @@
       "type": "url",
       "required": false,
       "example": "https://cloud.example.org"
+    },
+    {
+      "key": "RECAP_GAMES_DIR",
+      "label": {
+        "de": "Ordner mit den ES-DE-Spielstatistiken",
+        "en": "Folder with the ES-DE game statistics"
+      },
+      "help": {
+        "de": "Pro Gerät eine Datei <Gerät>.json (Spielzeit und Starts aus ES-DE), im Hub nur lesend eingebunden. Standard /app/external/games.",
+        "en": "One file <device>.json per device (play time and launches from ES-DE), mounted read-only into the hub. Default /app/external/games."
+      },
+      "type": "text",
+      "required": false,
+      "default": "/app/external/games",
+      "example": "/app/external/games"
+    },
+    {
+      "key": "RECAP_ROMS_DIR",
+      "label": {
+        "de": "Ordner mit den Spiele-Covern",
+        "en": "Folder with the game covers"
+      },
+      "help": {
+        "de": "Von RomM exportierte Cover unter <System>/covers/. Fehlt eines, sucht das Plugin es im Steam-Shop. Standard /app/external/roms.",
+        "en": "Box art exported by RomM below <system>/covers/. If one is missing the plugin looks it up in the Steam store. Default /app/external/roms."
+      },
+      "type": "text",
+      "required": false,
+      "default": "/app/external/roms",
+      "example": "/app/external/roms"
     }
   ],
   "personal_settings": [
@@ -204,6 +234,20 @@
       },
       "type": "password",
       "required": false
+    },
+    {
+      "key": "RECAP_GAMES_DEVICES",
+      "label": {
+        "de": "Spielgeräte (ES-DE)",
+        "en": "Game devices (ES-DE)"
+      },
+      "help": {
+        "de": "Kommagetrennte Namen der Geräte-Dateien, z. B. pc,deck. Leer = keine Spiele in deinem Rückblick.",
+        "en": "Comma-separated device file names, e.g. pc,deck. Empty = no games in your recap."
+      },
+      "type": "text",
+      "required": false,
+      "example": "pc,deck"
     }
   ],
   "pages": [
@@ -222,7 +266,9 @@
     "archive.org",
     "image.tmdb.org",
     "m.media-amazon.com",
-    "artworks.thetvdb.com"
+    "artworks.thetvdb.com",
+    "store.steampowered.com",
+    "cdn.cloudflare.steamstatic.com"
   ],
   "capabilities": []
 }
