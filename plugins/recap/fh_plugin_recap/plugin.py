@@ -150,17 +150,18 @@ def _valid_month(month: str) -> str:
 
 @router.post("/build")
 async def build_endpoint(month: Optional[str] = Query(default=None), force: bool = Query(default=False),
-                         user=Depends(get_current_user)):
-    """Builds the logged-in person's recap (previous month, or ``?month=YYYY-MM``) in the background."""
+                         redesign: bool = Query(default=False), user=Depends(get_current_user)):
+    """Builds the logged-in person's recap (previous month, or ``?month=YYYY-MM``) in the background.
+    ``redesign`` rebuilds an existing month with a fresh design instead of keeping the stored one."""
     target = _valid_month(month) if month else last_month()
     if target > last_month():
         raise HTTPException(422, "Only finished months can be built")
-    if store.read_snapshot(user.id, target) is not None and not force:
+    if store.read_snapshot(user.id, target) is not None and not (force or redesign):
         return {"status": "exists", "month": target, "route": route_for(target)}
     cfg = load_config(user.id)
     if not cfg.sources():
         return {"status": "no_sources", "month": target}
-    status = build.start(user.id, target, cfg, _tz(), on_done=announce, log=logger.warning)
+    status = build.start(user.id, target, cfg, _tz(), redesign=redesign, on_done=announce, log=logger.warning)
     return {"status": status, "month": target, "route": route_for(target)}
 
 
@@ -206,7 +207,7 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.2.1",
+            id=PLUGIN_ID, name="Recap", version="1.2.2",
             description="A monthly recap per person: series, music, audiobooks, podcasts, photos and games as a story.",
             capabilities=frozenset(),
             settings=(

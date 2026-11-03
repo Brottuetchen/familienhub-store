@@ -110,36 +110,49 @@ def km(a, b):
 
 # -- Choosing the design ------------------------------------------------------
 
-def choose_design(data, history):
-    """Design with memory: nothing the previous month (for palettes: the last two) already had."""
+def choose_design(data, history, current=None):
+    """Design with memory: nothing the previous month (for palettes: the last two) already had. ``current`` is the
+    month's own design on a redesign: its choices are avoided as well."""
     month = int(data["month"][5:])
-    rnd = random.Random(data["month"] + str(data.get("seed", "")))
+    seed = data["month"] + str(data.get("seed", "")) + (f":{data['design_round']}" if data.get("design_round") else "")
+    rnd = random.Random(seed)
     past = [h.get("design") or {} for h in history]
     last = past[-1] if past else {}
+    current = current or {}
 
-    recent = {p.get("palette") for p in past[-2:]}
+    recent = {p.get("palette") for p in past[-2:]} | {current.get("palette")}
     seasonal = [k for k, v in PALETTES.items() if month in v["months"] and len(v["months"]) < 12 and k not in recent]
     anytime = [k for k in PALETTES if k not in recent]
     palette = rnd.choice(seasonal or anytime or list(PALETTES))
 
-    def pick(options, avoid):
-        rest = [o for o in options if o != avoid] or list(options)
-        return rnd.choice(rest)
+    def pick(options, *avoid):
+        return pick_with(rnd, options, *avoid)
+
+    def old(design, group, key):
+        return (design.get(group) or {}).get(key)
 
     design = {
         "palette": palette,
         "offset": rnd.randrange(6),
-        "shape": pick(SHAPES, last.get("shape")),
-        "type": pick(TYPES, last.get("type")),
-        "variants": {k: pick(range(n), (last.get("variants") or {}).get(k)) for k, n in VARIANTS.items() if k not in LATE_SLIDES},
-        "texts": {k: pick(range(len(v)), (last.get("texts") or {}).get(k)) for k, v in KICKERS.items() if k not in LATE_SLIDES},
+        "shape": pick(SHAPES, last.get("shape"), current.get("shape")),
+        "type": pick(TYPES, last.get("type"), current.get("type")),
+        "variants": {k: pick(range(n), old(last, "variants", k), old(current, "variants", k))
+                     for k, n in VARIANTS.items() if k not in LATE_SLIDES},
+        "texts": {k: pick(range(len(v)), old(last, "texts", k), old(current, "texts", k))
+                  for k, v in KICKERS.items() if k not in LATE_SLIDES},
     }
-    late = random.Random(data["month"] + str(data.get("seed", "")) + "late")
+    late = random.Random(seed + "late")
     for k in LATE_SLIDES:
-        avoid_v, avoid_t = (last.get("variants") or {}).get(k), (last.get("texts") or {}).get(k)
-        design["variants"][k] = late.choice([o for o in range(VARIANTS[k]) if o != avoid_v] or list(range(VARIANTS[k])))
-        design["texts"][k] = late.choice([o for o in range(len(KICKERS[k])) if o != avoid_t] or list(range(len(KICKERS[k]))))
+        design["variants"][k] = pick_with(late, range(VARIANTS[k]), old(last, "variants", k), old(current, "variants", k))
+        design["texts"][k] = pick_with(late, range(len(KICKERS[k])), old(last, "texts", k), old(current, "texts", k))
     return design
+
+
+def pick_with(rnd, options, *avoid):
+    """Random choice that avoids the given values; the previous month's value is the one avoided first."""
+    options = list(options)
+    rest = [o for o in options if o not in avoid] or [o for o in options if o != avoid[0]] or options
+    return rnd.choice(rest)
 
 
 def highlights(data, history):
