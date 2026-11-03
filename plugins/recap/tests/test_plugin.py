@@ -73,7 +73,7 @@ def test_manifest_is_valid_and_matches_the_code():
     assert all(s["key"].startswith("RECAP_") for s in manifest["settings"] + manifest["personal_settings"])
     secret = {s["key"] for s in manifest["settings"] + manifest["personal_settings"] if s["type"] == "password"}
     assert {"RECAP_JELLYFIN_TOKEN", "RECAP_LISTENBRAINZ_TOKEN", "RECAP_ABS_TOKEN", "RECAP_IMMICH_KEY",
-            "RECAP_NAVIDROME_PASSWORD", "RECAP_NEXTCLOUD_APP_PASSWORD"} == secret
+            "RECAP_NAVIDROME_PASSWORD", "RECAP_NEXTCLOUD_APP_PASSWORD", "RECAP_ROMM_TOKEN"} == secret
     assert [p["id"] for p in manifest["pages"]] == ["recaps"] and manifest["pages"][0]["title"] == {"de": "Rückblicke", "en": "Recaps"}
     assert manifest["pages"][0]["icon"] == "celebration"
     assert plugin.schedule_minutes == 60 and plugin.has_personal_test

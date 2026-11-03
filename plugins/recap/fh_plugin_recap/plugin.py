@@ -53,7 +53,8 @@ COMPATIBLE = get_personal_setting is not None and hasattr(Plugin, "page") and ha
 TEST_TIMEOUT = 6.0
 
 GLOBAL_KEYS = ("RECAP_JELLYFIN_URL", "RECAP_JELLYFIN_TOKEN", "RECAP_ABS_URL", "RECAP_IMMICH_URL",
-               "RECAP_NAVIDROME_URL", "RECAP_NEXTCLOUD_URL", "RECAP_GAMES_DIR", "RECAP_ROMS_DIR")
+               "RECAP_NAVIDROME_URL", "RECAP_NEXTCLOUD_URL", "RECAP_GAMES_DIR", "RECAP_ROMM_URL",
+               "RECAP_ROMM_TOKEN")
 PERSONAL_KEYS = ("RECAP_JELLYFIN_USER", "RECAP_LISTENBRAINZ_USER", "RECAP_LISTENBRAINZ_TOKEN", "RECAP_ABS_TOKEN",
                  "RECAP_IMMICH_KEY", "RECAP_NAVIDROME_USER", "RECAP_NAVIDROME_PASSWORD", "RECAP_NEXTCLOUD_USER",
                  "RECAP_NEXTCLOUD_APP_PASSWORD", "RECAP_GAMES_DEVICES")
@@ -84,7 +85,8 @@ def _global_urls() -> Dict[str, str]:
             "navidrome_url": _url(get_setting("RECAP_NAVIDROME_URL")),
             "nextcloud_url": _url(get_setting("RECAP_NEXTCLOUD_URL")),
             "games_dir": str(get_setting("RECAP_GAMES_DIR") or "").strip() or "/app/external/games",
-            "roms_dir": str(get_setting("RECAP_ROMS_DIR") or "").strip() or "/app/external/roms"}
+            "romm_url": _url(get_setting("RECAP_ROMM_URL")),
+            "romm_token": str(get_setting("RECAP_ROMM_TOKEN") or "").strip()}
 
 
 def load_config(user_id: int, overrides: Optional[Dict[str, str]] = None) -> collectors.Config:
@@ -204,7 +206,7 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.2.0",
+            id=PLUGIN_ID, name="Recap", version="1.2.1",
             description="A monthly recap per person: series, music, audiobooks, podcasts, photos and games as a story.",
             capabilities=frozenset(),
             settings=(
@@ -216,8 +218,8 @@ class RecapPlugin(Plugin):
                 Setting("RECAP_NEXTCLOUD_URL", "Nextcloud address", required=False, type="url"),
                 Setting("RECAP_GAMES_DIR", "Folder with the ES-DE game statistics", required=False,
                         default="/app/external/games"),
-                Setting("RECAP_ROMS_DIR", "Folder with the exported game covers", required=False,
-                        default="/app/external/roms"),
+                Setting("RECAP_ROMM_URL", "RomM address", required=False, type="url"),
+                Setting("RECAP_ROMM_TOKEN", "RomM client token", secret=True, required=False, type="password"),
             ),
             personal_settings=(
                 Setting("RECAP_JELLYFIN_USER", "Jellyfin user name", required=False),
@@ -378,6 +380,12 @@ class RecapPlugin(Plugin):
                     readable = collectors.read_games(cfg.games_dir, cfg.games_devices)
                     return "connected" if readable else "no device file readable (check the device names)"
                 lines.append(await _check(client, "Games", games))
+                if cfg.romm_url and cfg.romm_token:
+                    async def romm():
+                        (await client.get(f"{cfg.romm_url}/api/platforms", headers={"Authorization": "Bearer " + cfg.romm_token})
+                         ).raise_for_status()
+                        return "connected"
+                    lines.append(await _check(client, "RomM", romm))
         if not lines:
             return {"ok": True, "level": "info", "message": "Nothing to test yet. Fill in at least one account."}
         failed = [ln for ln in lines if not ln.endswith("connected")]

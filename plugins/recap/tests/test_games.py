@@ -39,10 +39,9 @@ def write_device(directory, name, content):
 
 @pytest.fixture
 def gamedirs(tmp_path, monkeypatch):
-    games, roms = tmp_path / "games", tmp_path / "roms"
+    games = tmp_path / "games"
     monkeypatch.setenv("RECAP_GAMES_DIR", str(games))
-    monkeypatch.setenv("RECAP_ROMS_DIR", str(roms))
-    return games, roms
+    return (games,)
 
 
 def rec(playtime, playcount, last="20261025T114002"):
@@ -77,28 +76,124 @@ def test_devices_are_plain_file_stems():
     assert collectors.parse_devices(None) == ()
 
 
-def test_cover_candidates_for_files_and_folders():
-    assert collectors.game_cover_candidates("ps2", NFS) == ["ps2/covers/Need for Speed - Underground 2 (Europe) (En,Fr,De,Es,It,Nl,Sv).png"]
-    assert collectors.game_cover_candidates("switch", MARIO) == [
-        "switch/covers/Super Mario Maker 2/Super Mario Maker 2.png", "switch/covers/Super Mario Maker 2.png"]
-    assert collectors.game_cover_candidates("x", "") == []
+ROMM = "http://romm.example.org:8095"
+BEARER = {"Authorization": "Bearer romm-secret-1"}
+CFG = collectors.Config(romm_url=ROMM, romm_token="romm-secret-1")
 
 
-def test_local_cover_is_copied_and_checked(tmp_path):
-    roms, img = tmp_path / "roms", tmp_path / "img"
-    img.mkdir()
-    (roms / "switch" / "covers").mkdir(parents=True)
-    (roms / "switch" / "covers" / "Super Mario Maker 2.png").write_bytes(PNG)
-    assert collectors.local_game_cover(str(roms), "switch", MARIO, img, "gm-mario") == "img/gm-mario.png"
-    assert (img / "gm-mario.png").read_bytes() == PNG
-    (roms / "switch" / "covers" / "Super Mario Maker 2").mkdir()
-    (roms / "switch" / "covers" / "Super Mario Maker 2" / "Super Mario Maker 2.png").write_bytes(JPEG)  # the specific one wins
-    assert collectors.local_game_cover(str(roms), "switch", MARIO, img, "gm-mario") == "img/gm-mario.jpg"
-    (roms / "ps2" / "covers").mkdir(parents=True)
-    (roms / "ps2" / "covers" / (NFS[:-4] + ".png")).write_bytes(b"not an image")
-    assert collectors.local_game_cover(str(roms), "ps2", NFS, img, "x") is None  # content is checked, not the name
-    assert collectors.local_game_cover(str(roms), "../etc", NFS, img, "x") is None
-    assert collectors.local_game_cover(str(tmp_path / "missing"), "ps2", NFS, img, "x") is None
+def rom_item(fs_name, name, **kw):
+    return {"id": 7, "name": name, "fs_name": fs_name, "fs_name_no_ext": fs_name.rsplit(".", 1)[0],
+            "fs_name_no_tags": fs_name.split(" (")[0], "path_cover_large": "/assets/romm/resources/roms/1/7/cover/big.png?ts=1",
+            "path_cover_small": "/assets/romm/resources/roms/1/7/cover/small.png", "url_cover": None, "platform_fs_slug": "ps2", **kw}
+
+
+def mock_romm(http, items_by_search=None, platforms=None):
+    http.get(f"{ROMM}/api/platforms").mock(return_value=httpx.Response(
+        200, json=platforms if platforms is not None else [{"id": 3, "fs_slug": "ps2"}, {"id": 9, "fs_slug": "switch"}]))
+    return http.get(f"{ROMM}/api/roms").mock(side_effect=lambda r: httpx.Response(
+        200, json={"items": (items_by_search or {}).get(r.url.params["search_term"], []), "total": 1}))
+
+
+def romm_cover(system, rel, tmp_path, cfg=CFG, setup=None, download=True):
+    async def go():
+        async with collectors.new_client() as client:
+            romm = collectors.Romm(client, cfg)
+            hit = await romm.find(system, rel)
+            return hit, (await romm.cover(hit, tmp_path, "gm-x") if hit and download else None)
+
+    with respx.mock(using="httpx", assert_all_called=False) as http:
+        calls = setup(http) if setup else None
+        return run(go()), http, calls
+
+
+def test_romm_matches_by_file_name_and_downloads_the_cover_with_the_token(tmp_path):
+    item = rom_item(NFS, "Need for Speed: Underground 2")
+    big = {}
+
+    def setup(http):
+        roms = mock_romm(http, {NFS[:-4]: [rom_item("Other.iso", "Other"), item]})
+        big["route"] = http.get(f"{ROMM}/assets/romm/resources/roms/1/7/cover/big.png").mock(
+            return_value=httpx.Response(200, content=PNG, headers={"content-type": "image/png"}))
+        return roms
+
+    (hit, cover), http, roms = romm_cover("ps2", NFS, tmp_path, setup=setup)
+    assert hit["name"] == "Need for Speed: Underground 2" and cover == "img/gm-x.png"
+    params = dict(roms.calls[0].request.url.params)
+    assert params["platform_ids"] == "3" and params["search_term"] == NFS[:-4]
+    assert big["route"].calls[0].request.headers["authorization"] == "Bearer romm-secret-1"
+    assert roms.calls[0].request.headers["authorization"] == "Bearer romm-secret-1"
+
+
+def test_romm_folder_game_uses_the_folder_name_and_falls_back_to_loose_matching(tmp_path):
+    def setup(http):
+        return mock_romm(http, {"Super Mario Maker 2": [rom_item("Super Mario Maker 2", "Super Mario Maker 2")]})
+
+    (hit, _), _, roms = romm_cover("switch", MARIO, tmp_path, setup=setup, download=False)
+    assert hit["fs_name"] == "Super Mario Maker 2" and dict(roms.calls[0].request.url.params)["platform_ids"] == "9"
+    # fs_name differs (other extension): the name without extension still matches, case-insensitive
+    (hit, _), _, _ = romm_cover("ps2", NFS, tmp_path, download=False, setup=lambda http: mock_romm(
+        http, {NFS[:-4]: [rom_item(NFS[:-4].upper() + ".chd", "NFS")]}))
+    assert hit and hit["name"] == "NFS"
+
+
+def test_romm_no_match_unknown_platform_and_no_romm(tmp_path):
+    (hit, _), _, _ = romm_cover("ps2", NFS, tmp_path, setup=lambda http: mock_romm(http, {NFS[:-4]: [rom_item("Different.iso", "D")]}))
+    assert hit is None
+    (hit, _), _, roms = romm_cover("gc", NFS, tmp_path, setup=mock_romm)  # no such platform in RomM
+    assert hit is None and roms.call_count == 0
+    (hit, _), http, _ = romm_cover("ps2", NFS, tmp_path, cfg=collectors.Config())  # RomM not configured: no request at all
+    assert hit is None and not http.calls
+
+
+def test_romm_failures_are_soft(tmp_path):
+    def down(http):
+        http.get(f"{ROMM}/api/platforms").mock(return_value=httpx.Response(401))
+
+    assert romm_cover("ps2", NFS, tmp_path, setup=down)[0][0] is None
+
+    def refuses(http):
+        http.get(f"{ROMM}/api/platforms").mock(side_effect=httpx.ConnectError("boom"))
+
+    assert romm_cover("ps2", NFS, tmp_path, setup=refuses)[0][0] is None
+
+
+def test_romm_cover_fallbacks_large_small_external(tmp_path):
+    item = rom_item(NFS, "N", url_cover="https://images.example.org/c.jpg")
+    seen = {}
+
+    def setup(http):
+        mock_romm(http, {NFS[:-4]: [item]})
+        http.get(f"{ROMM}/assets/romm/resources/roms/1/7/cover/big.png").mock(return_value=httpx.Response(404))
+        http.get(f"{ROMM}/assets/romm/resources/roms/1/7/cover/small.png").mock(return_value=httpx.Response(404))
+        seen["ext"] = http.get("https://images.example.org/c.jpg").mock(
+            return_value=httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"}))
+
+    (_, cover), _, _ = romm_cover("ps2", NFS, tmp_path, setup=setup)
+    assert cover == "img/gm-x.jpg" and "authorization" not in seen["ext"].calls[0].request.headers  # never the token elsewhere
+
+    def small_only(http):
+        mock_romm(http, {NFS[:-4]: [rom_item(NFS, "N")]})
+        http.get(f"{ROMM}/assets/romm/resources/roms/1/7/cover/big.png").mock(return_value=httpx.Response(404))
+        http.get(f"{ROMM}/assets/romm/resources/roms/1/7/cover/small.png").mock(
+            return_value=httpx.Response(200, content=PNG, headers={"content-type": "image/png"}))
+
+    assert romm_cover("ps2", NFS, tmp_path, setup=small_only)[0][1] == "img/gm-x.png"
+    odd = rom_item(NFS, "N", path_cover_large="http://evil.example/x.png", path_cover_small="//evil.example/y.png")
+    assert romm_cover("ps2", NFS, tmp_path, setup=lambda http: mock_romm(http, {NFS[:-4]: [odd]}))[0][1] is None
+
+
+def test_romm_lookups_are_cached_within_a_build(tmp_path):
+    async def go():
+        async with collectors.new_client() as client:
+            romm = collectors.Romm(client, CFG)
+            for _ in range(3):
+                await romm.find("ps2", NFS)
+
+    with respx.mock(using="httpx", assert_all_called=False) as http:
+        plat = http.get(f"{ROMM}/api/platforms").mock(return_value=httpx.Response(200, json=[{"id": 3, "fs_slug": "ps2"}]))
+        roms = http.get(f"{ROMM}/api/roms").mock(return_value=httpx.Response(200, json={"items": []}))
+        run(go())
+    assert plat.call_count == 1 and roms.call_count == 1
 
 
 # --- reading the device files ---
@@ -145,20 +240,21 @@ def test_two_devices_are_merged_and_a_late_device_does_not_count_its_history():
 
 
 def test_collect_games_builds_the_numbers_and_covers(tmp_path, gamedirs):
-    games, roms = gamedirs
+    (games,) = gamedirs
     img = tmp_path / "img"
     img.mkdir()
-    (roms / "ps2" / "covers").mkdir(parents=True)
-    (roms / "ps2" / "covers" / (NFS[:-4] + ".png")).write_bytes(PNG)
     final = {"pc": {
         f"ps2/{NFS}": rec(7200, 4), f"steam/{WITCHER}": rec(3600, 2), f"switch/{MARIO}": rec(1800, 1), "ps3/Gone (USA).pkg": rec(600, 1)}}
-    cfg = collectors.Config(games_dir=str(games), roms_dir=str(roms), games_devices=("pc",))
+    cfg = collectors.Config(games_dir=str(games), romm_url=ROMM, romm_token="romm-secret-1", games_devices=("pc",))
 
     async def go():
         async with collectors.new_client() as client:
             return await collectors.collect_games(client, cfg, START, END, img, None, final)
 
     with respx.mock(using="httpx", assert_all_called=False) as http:
+        mock_romm(http, {NFS[:-4]: [rom_item(NFS, "Need for Speed: Underground 2")]})
+        http.get(f"{ROMM}/assets/romm/resources/roms/1/7/cover/big.png").mock(
+            return_value=httpx.Response(200, content=PNG, headers={"content-type": "image/png"}))
         search = http.get("https://store.steampowered.com/api/storesearch/").mock(side_effect=lambda r: httpx.Response(
             200, json={"items": [{"id": 292030}]} if "Witcher" in r.url.params["term"] else {"items": []}))
         http.get("https://cdn.cloudflare.steamstatic.com/steam/apps/292030/library_600x900.jpg").mock(return_value=httpx.Response(404))
@@ -167,12 +263,13 @@ def test_collect_games_builds_the_numbers_and_covers(tmp_path, gamedirs):
         out = run(go())
     assert out["hours"] == 3.7 and out["minutes"] == 220 and out["sessions"] == 8 and out["games_count"] == 4
     assert out["systems_count"] == 4 and out["top_system"] == "PlayStation 2"
-    assert [g["name"] for g in out["games"]] == ["Need for Speed - Underground 2", "The Witcher 3 Wild Hunt — Remastered",
+    assert [g["name"] for g in out["games"]] == ["Need for Speed: Underground 2", "The Witcher 3 Wild Hunt — Remastered",
                                                   "Super Mario Maker 2", "Gone"]
     nfs, witcher, mario, gone = out["games"]
-    assert nfs["cover"] == "img/gm-need-for-speed-underground-2.png" and nfs["system"] == "PlayStation 2" and nfs["minutes"] == 120
+    assert nfs["cover"] == "img/gm-need-for-speed-underground-2.png"  # the name and cover come from RomM
+    assert nfs["cover"] and nfs["system"] == "PlayStation 2" and nfs["minutes"] == 120
     assert witcher["cover"] and witcher["cover"].endswith(".jpg") and header.call_count == 1  # Steam: portrait missing, header used
-    assert mario["cover"] is None and gone["cover"] is None  # no local file and no Steam hit: the story shows a tile
+    assert mario["cover"] is None and gone["cover"] is None  # not in RomM and no Steam hit: the story shows a tile
     assert dict(search.calls[0].request.url.params)["cc"] == "DE"
 
 
@@ -245,10 +342,8 @@ def test_build_uses_snapshots_and_renders_the_games_slide(people, services, game
     pc_file(gamedirs, ps2={NFS: entry(99999, 99)}, steam={WITCHER: entry(99999, 9, "20261201T100000")})  # December, must not count
     store.write_games(1, "2026-09-30", {"pc": {f"ps2/{NFS}": rec(600, 2)}})
     store.write_games(1, "2026-11-01", {"pc": {f"ps2/{NFS}": rec(600 + 3 * 3600, 6), f"steam/{WITCHER}": rec(7200, 3, "20261020T200000")}})
-    (gamedirs[1] / "ps2" / "covers").mkdir(parents=True)
-    (gamedirs[1] / "ps2" / "covers" / (NFS[:-4] + ".png")).write_bytes(PNG)
     services.get("https://store.steampowered.com/api/storesearch/").mock(return_value=httpx.Response(200, json={"items": []}))
-    data = build_for()
+    data = build_for()  # RomM is not configured here: Steam and placeholders only
     ga = data["games"]
     assert ga["hours"] == 5.0 and ga["sessions"] == 7 and ga["games_count"] == 2 and ga["top_system"] == "PlayStation 2"
     assert [g["name"] for g in ga["games"]] == ["Need for Speed - Underground 2", "The Witcher 3 Wild Hunt — Remastered"]
@@ -256,9 +351,22 @@ def test_build_uses_snapshots_and_renders_the_games_slide(people, services, game
     assert data["totals"]["games_hours"] == 5.0 and data["highlights"].get("first_games") is True
     page = (store.month_dir(1, MONTH) / "index.html").read_text()
     assert "s-games" in page and "Need for Speed" in page and 'data-clip' in page
-    assert (store.month_dir(1, MONTH) / "img" / "gm-need-for-speed-underground-2.png").is_file()
     assert "Games" in views.render_obsidian(data, "/x") and "## Games" in views.render_obsidian(data, "/x")
     assert "spiele_stunden: 5.0" in views.render_obsidian(data, "/x")
+
+
+def test_build_takes_title_and_cover_from_romm(people, services, gamedirs, monkeypatch):
+    monkeypatch.setenv("RECAP_ROMM_URL", ROMM + "/")
+    monkeypatch.setenv("RECAP_ROMM_TOKEN", "romm-secret-1")
+    games_person(people)
+    pc_file(gamedirs, ps2={NFS: entry(7200, 3, "20261012T100000")})
+    mock_romm(services, {NFS[:-4]: [rom_item(NFS, "Need for Speed: Underground 2")]})
+    services.get(f"{ROMM}/assets/romm/resources/roms/1/7/cover/big.png").mock(
+        return_value=httpx.Response(200, content=PNG, headers={"content-type": "image/png"}))
+    data = build_for()
+    assert data["games"]["games"][0]["name"] == "Need for Speed: Underground 2"
+    assert (store.month_dir(1, MONTH) / "img" / "gm-need-for-speed-underground-2.png").is_file()
+    assert "romm-secret-1" not in json.dumps(data) and "romm.example.org" not in (store.month_dir(1, MONTH) / "index.html").read_text()
 
 
 def test_a_games_only_person_gets_a_recap(people, gamedirs, services):
@@ -355,7 +463,9 @@ def test_settings_are_in_manifest_and_code():
 
     manifest = json.loads((Path(__file__).resolve().parents[1] / "familienhub-plugin.json").read_text())
     admin = {s["key"]: s for s in manifest["settings"]}
-    assert admin["RECAP_GAMES_DIR"]["default"] == "/app/external/games" and admin["RECAP_ROMS_DIR"]["default"] == "/app/external/roms"
+    assert admin["RECAP_GAMES_DIR"]["default"] == "/app/external/games" and "RECAP_ROMS_DIR" not in admin
+    assert admin["RECAP_ROMM_URL"]["type"] == "url" and admin["RECAP_ROMM_TOKEN"]["type"] == "password"
+    assert not admin["RECAP_ROMM_URL"].get("default") and not admin["RECAP_ROMM_TOKEN"].get("default")
     mine = {s["key"]: s for s in manifest["personal_settings"]}
     assert mine["RECAP_GAMES_DEVICES"]["label"]["de"] == "Spielgeräte (ES-DE)" and mine["RECAP_GAMES_DEVICES"]["type"] == "text"
     assert {"store.steampowered.com", "cdn.cloudflare.steamstatic.com"} <= set(manifest["hosts"])
@@ -363,7 +473,10 @@ def test_settings_are_in_manifest_and_code():
 
 def test_config_defaults_and_overrides(people, monkeypatch):
     cfg = mod.load_config(1)
-    assert cfg.games_dir == "/app/external/games" and cfg.roms_dir == "/app/external/roms" and cfg.games_devices == ()
+    assert cfg.games_dir == "/app/external/games" and cfg.romm_url == "" and cfg.games_devices == ()
+    monkeypatch.setenv("RECAP_ROMM_URL", "http://10.0.0.5:8095/")
+    monkeypatch.setenv("RECAP_ROMM_TOKEN", " tok ")
+    assert (mod.load_config(1).romm_url, mod.load_config(1).romm_token) == ("http://10.0.0.5:8095", "tok")
     monkeypatch.setenv("RECAP_GAMES_DIR", "/data/g")
     games_person(people)
     assert mod.load_config(1).games_dir == "/data/g" and mod.load_config(1).sources()[-1] == "games"
@@ -392,9 +505,26 @@ def test_steam_cover_retries_with_a_looser_term(tmp_path):
             return await collectors.steam_cover(client, tmp_path, "The Witcher 3 Wild Hunt — Remastered", "gm-w3")
 
     with respx.mock(using="httpx", assert_all_called=False) as http:
+        mock_romm(http, {NFS[:-4]: [rom_item(NFS, "Need for Speed: Underground 2")]})
+        http.get(f"{ROMM}/assets/romm/resources/roms/1/7/cover/big.png").mock(
+            return_value=httpx.Response(200, content=PNG, headers={"content-type": "image/png"}))
         search = http.get("https://store.steampowered.com/api/storesearch/").mock(side_effect=lambda r: httpx.Response(
             200, json={"items": [{"id": 292030}]} if r.url.params["term"] == "The Witcher 3 Wild Hunt" else {"items": []}))
         http.get("https://cdn.cloudflare.steamstatic.com/steam/apps/292030/library_600x900.jpg").mock(
             return_value=httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"}))
         out = run(go())
     assert out == "img/gm-w3.jpg" and search.call_count == 2
+
+
+def test_connection_test_for_romm(people, gamedirs, services, monkeypatch):
+    monkeypatch.setenv("RECAP_ROMM_URL", ROMM)
+    monkeypatch.setenv("RECAP_ROMM_TOKEN", "romm-secret-1")
+    pc_file(gamedirs, ps2={NFS: entry(1, 1)})
+    values = {"RECAP_GAMES_DEVICES": "pc"}
+    route = services.get(f"{ROMM}/api/platforms").mock(return_value=httpx.Response(200, json=[]))
+    result = run(RecapPlugin().test_personal_settings(SimpleNamespace(id=2), values))
+    assert result["ok"] and "RomM: connected" in result["message"] and "romm-secret-1" not in result["message"]
+    assert route.calls[0].request.headers["authorization"] == "Bearer romm-secret-1"
+    route.mock(return_value=httpx.Response(401))
+    result = run(RecapPlugin().test_personal_settings(SimpleNamespace(id=2), values))
+    assert not result["ok"] and "RomM: login rejected" in result["message"] and "example.org" not in result["message"]

@@ -71,7 +71,8 @@ class Config:
     nextcloud_user: str = ""
     nextcloud_password: str = ""
     games_dir: str = "/app/external/games"
-    roms_dir: str = "/app/external/roms"
+    romm_url: str = ""
+    romm_token: str = ""
     games_devices: Tuple[str, ...] = ()
 
     def sources(self) -> List[str]:
@@ -751,41 +752,6 @@ def clean_game_name(rel: str) -> str:
     return name or parts[-1]
 
 
-def game_cover_candidates(system: str, rel: str) -> List[str]:
-    """Where RomM's exported box art may lie below the roms folder, most specific first."""
-    parts = [x for x in str(rel).split("/") if x and x != "."]
-    if not parts:
-        return []
-    stem = _strip_ext(parts[-1])
-    found = []
-    if len(parts) > 1:
-        found.append(f"{system}/covers/{parts[-2]}/{stem}.png")
-        found.append(f"{system}/covers/{parts[-2]}.png")
-    found.append(f"{system}/covers/{stem}.png")
-    return list(dict.fromkeys(found))
-
-
-def local_game_cover(roms_dir: str, system: str, rel: str, img: Path, name: str) -> Optional[str]:
-    """Copies the exported cover (if there is one) into the month's image folder."""
-    if not DEVICE_RE.match(system):  # a system is a plain folder name, never a path
-        return None
-    root = Path(roms_dir)
-    for candidate in game_cover_candidates(system, rel):
-        path = root / candidate
-        try:
-            if ".." in Path(candidate).parts or not path.is_file() or path.stat().st_size > MAX_IMAGE_BYTES:
-                continue
-            data = path.read_bytes()
-        except OSError:
-            continue
-        ext = sniff_image(data)
-        if ext is None or len(data) < 500:
-            continue
-        (img / f"{name}.{ext}").write_bytes(data)
-        return f"img/{name}.{ext}"
-    return None
-
-
 EDITION_RE = re.compile(r"\s+(?:remastered|enhanced|definitive|complete|goty|game of the year|edition|deluxe)\b.*$",
                         re.IGNORECASE)
 
@@ -818,6 +784,69 @@ async def steam_cover(client: httpx.AsyncClient, img: Path, term: str, name: str
         if path:
             return path
     return None
+
+
+class Romm:
+    """The games library in RomM (API 5.x, bearer token): ES-DE system -> platform by folder name (``fs_slug``), then
+    the ROM by file name. Platforms and look-ups are cached for one build. Every failure (not configured, not
+    reachable, login rejected, odd answers) just gives None, so the story falls back to Steam or a placeholder."""
+
+    def __init__(self, client: httpx.AsyncClient, cfg: Config) -> None:
+        self.client, self.base = client, cfg.romm_url.rstrip("/")
+        self.headers = {"Authorization": "Bearer " + cfg.romm_token}
+        self.enabled = bool(self.base and cfg.romm_token)
+        self._platforms: Optional[Dict[str, int]] = None
+        self._found: Dict[Tuple[str, str], Optional[dict]] = {}
+
+    async def platforms(self) -> Dict[str, int]:
+        if self._platforms is None:
+            self._platforms = {}
+            if self.enabled:
+                try:
+                    items = await get_json(self.client, f"{self.base}/api/platforms", headers=self.headers)
+                    self._platforms = {str(x["fs_slug"]).lower(): int(x["id"]) for x in items
+                                       if isinstance(x, dict) and x.get("fs_slug") and str(x.get("id", "")).isdigit()}
+                except COVER_ERRORS:
+                    pass
+        return self._platforms
+
+    async def find(self, system: str, rel: str) -> Optional[dict]:
+        """The RomM entry of ``<system>/<rel>``: ``fs_name`` is the file name, for folder games the folder name."""
+        key = (system, rel)
+        if key in self._found:
+            return self._found[key]
+        self._found[key] = None
+        platform = (await self.platforms()).get(system.lower())
+        parts = [x for x in str(rel).split("/") if x and x != "."]
+        if platform is None or not parts:
+            return None
+        fs_name = parts[-2] if len(parts) > 1 else parts[0]
+        stem = _strip_ext(fs_name)
+        try:
+            page = await get_json(self.client, f"{self.base}/api/roms", headers=self.headers,
+                                  params={"platform_ids": platform, "search_term": stem, "limit": 50})
+            items = [x for x in (page.get("items") or []) if isinstance(x, dict)]
+        except COVER_ERRORS:
+            return None
+        loose = {stem.casefold(), clean_game_name(rel).casefold()}
+        hit = (next((x for x in items if x.get("fs_name") == fs_name), None)
+               or next((x for x in items if str(x.get("fs_name_no_ext") or "").casefold() in loose
+                        or str(x.get("fs_name_no_tags") or "").casefold() in loose), None))
+        self._found[key] = hit
+        return hit
+
+    async def cover(self, hit: dict, img: Path, name: str) -> Optional[str]:
+        """The big cover, else the small one (both served by RomM, with the token), else the metadata picture's own
+        address (a third-party host: no token)."""
+        for field in ("path_cover_large", "path_cover_small"):
+            path = hit.get(field)
+            if isinstance(path, str) and path.startswith("/") and not path.startswith("//"):
+                found = await save_image(self.client, self.base + path, img, name, self.headers)
+                if found:
+                    return found
+        if _safe_feed_url(hit.get("url_cover")):
+            return await save_image(self.client, hit["url_cover"], img, name)
+        return None
 
 
 def read_games(games_dir: str, devices) -> Dict[str, Dict[str, Dict[str, Any]]]:
@@ -910,13 +939,21 @@ async def collect_games(client, cfg: Config, start, end, img: Path, base: Option
     rows = [x for x in rows if x["minutes"] > 0 and x["name"]]
     rows.sort(key=lambda x: (-x["minutes"], x["name"].casefold()))
     top = rows[:8]
+    romm = Romm(client, cfg)
 
     async def game_cover(row):
+        """RomM (title and cover) for everything but Steam/PC games, then the Steam store, else None (placeholder)."""
         system, rel = row["_key"].split("/", 1)
+        hit = None
+        if system not in ("steam", "windows"):
+            hit = await romm.find(system, rel)
+            if hit and str(hit.get("name") or "").strip():
+                row["name"] = str(hit["name"]).strip()
         file_name = f"gm-{slug(row['name'])}"
-        path = local_game_cover(cfg.roms_dir, system, rel, img, file_name)
-        if path:
-            return path
+        if hit:
+            path = await romm.cover(hit, img, file_name)
+            if path:
+                return path
         try:
             return await steam_cover(client, img, row["name"], file_name)
         except COVER_ERRORS:
