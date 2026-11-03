@@ -1,0 +1,225 @@
+{
+  "id": "recap",
+  "name": {
+    "de": "Rückblick",
+    "en": "Recap"
+  },
+  "version": "1.0.0",
+  "description": {
+    "de": "Ein Monatsrückblick pro Person als Story (wie bei Musikdiensten zum Jahresende): Serien und Filme aus Jellyfin, Musik aus ListenBrainz, Hörbücher aus Audiobookshelf, Podcasts über Nextcloud, Fotos aus Immich, dazu Ausschnitte aus Navidrome als Soundtrack. Jede Person verbindet ihre eigenen Konten unter „Meine Verbindungen“.",
+    "en": "A monthly recap per person as a story (like a music service's year in review): series and films from Jellyfin, music from ListenBrainz, audiobooks from Audiobookshelf, podcasts through Nextcloud, photos from Immich, with clips from Navidrome as the soundtrack. Everybody connects their own accounts under My connections."
+  },
+  "author": "Familienhub",
+  "homepage": "https://github.com/Brottuetchen/familienhub-store",
+  "license": "MIT",
+  "package": ".",
+  "entry_point": "fh_plugin_recap.plugin:RecapPlugin",
+  "settings": [
+    {
+      "key": "RECAP_JELLYFIN_URL",
+      "label": {
+        "de": "Adresse von Jellyfin",
+        "en": "Address of Jellyfin"
+      },
+      "help": {
+        "de": "So erreicht der Hub Jellyfin. Leer = Serien und Filme werden übersprungen.",
+        "en": "How the hub reaches Jellyfin. Empty = series and films are skipped."
+      },
+      "type": "url",
+      "required": false,
+      "example": "https://jellyfin.example.org"
+    },
+    {
+      "key": "RECAP_JELLYFIN_TOKEN",
+      "label": {
+        "de": "Jellyfin-Server-Schlüssel",
+        "en": "Jellyfin server API key"
+      },
+      "help": {
+        "de": "Jellyfin → Dashboard → API-Schlüssel. Das Plugin „Playback Reporting“ muss installiert sein. Der Schlüssel gilt für den Server; jede Person gibt nur ihren Jellyfin-Benutzernamen an.",
+        "en": "Jellyfin Dashboard → API keys. The Playback Reporting plugin must be installed. The key is for the server; each person only enters their Jellyfin user name."
+      },
+      "type": "password",
+      "required": false
+    },
+    {
+      "key": "RECAP_ABS_URL",
+      "label": {
+        "de": "Adresse von Audiobookshelf",
+        "en": "Address of Audiobookshelf"
+      },
+      "help": {
+        "de": "Leer = Hörbücher werden übersprungen.",
+        "en": "Empty = audiobooks are skipped."
+      },
+      "type": "url",
+      "required": false,
+      "example": "https://abs.example.org"
+    },
+    {
+      "key": "RECAP_IMMICH_URL",
+      "label": {
+        "de": "Adresse von Immich",
+        "en": "Address of Immich"
+      },
+      "help": {
+        "de": "Ohne /api am Ende. Leer = Fotos werden übersprungen.",
+        "en": "Without /api at the end. Empty = photos are skipped."
+      },
+      "type": "url",
+      "required": false,
+      "example": "https://photos.example.org"
+    },
+    {
+      "key": "RECAP_NAVIDROME_URL",
+      "label": {
+        "de": "Adresse von Navidrome",
+        "en": "Address of Navidrome"
+      },
+      "help": {
+        "de": "Für den Soundtrack der Story. Leer = Story ohne Ton.",
+        "en": "For the story's soundtrack. Empty = a story without sound."
+      },
+      "type": "url",
+      "required": false,
+      "example": "https://music.example.org"
+    },
+    {
+      "key": "RECAP_NEXTCLOUD_URL",
+      "label": {
+        "de": "Adresse von Nextcloud",
+        "en": "Address of Nextcloud"
+      },
+      "help": {
+        "de": "Für Podcasts über GPodder Sync (AntennaPod). Leer = Podcasts werden übersprungen.",
+        "en": "For podcasts through GPodder Sync (AntennaPod). Empty = podcasts are skipped."
+      },
+      "type": "url",
+      "required": false,
+      "example": "https://cloud.example.org"
+    }
+  ],
+  "personal_settings": [
+    {
+      "key": "RECAP_JELLYFIN_USER",
+      "label": {
+        "de": "Dein Jellyfin-Benutzername",
+        "en": "Your Jellyfin user name"
+      },
+      "help": {
+        "de": "Nur deine eigenen Wiedergaben kommen in deinen Rückblick.",
+        "en": "Only your own plays go into your recap."
+      },
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "RECAP_LISTENBRAINZ_USER",
+      "label": {
+        "de": "Dein ListenBrainz-Benutzername",
+        "en": "Your ListenBrainz user name"
+      },
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "RECAP_LISTENBRAINZ_TOKEN",
+      "label": {
+        "de": "ListenBrainz-Token",
+        "en": "ListenBrainz token"
+      },
+      "help": {
+        "de": "Optional. Unter listenbrainz.org/settings. Mit Token wird auch ein privates Profil gelesen.",
+        "en": "Optional. At listenbrainz.org/settings. With a token a private profile can be read, too."
+      },
+      "type": "password",
+      "required": false
+    },
+    {
+      "key": "RECAP_ABS_TOKEN",
+      "label": {
+        "de": "Audiobookshelf-API-Token",
+        "en": "Audiobookshelf API token"
+      },
+      "help": {
+        "de": "In Audiobookshelf unter Einstellungen → Benutzer → dein Konto.",
+        "en": "In Audiobookshelf under Settings → Users → your account."
+      },
+      "type": "password",
+      "required": false
+    },
+    {
+      "key": "RECAP_IMMICH_KEY",
+      "label": {
+        "de": "Immich-API-Schlüssel",
+        "en": "Immich API key"
+      },
+      "help": {
+        "de": "Kontoeinstellungen → API-Schlüssel (Rechte: asset.read, asset.view).",
+        "en": "Account settings → API keys (permissions: asset.read, asset.view)."
+      },
+      "type": "password",
+      "required": false
+    },
+    {
+      "key": "RECAP_NAVIDROME_USER",
+      "label": {
+        "de": "Navidrome-Benutzername",
+        "en": "Navidrome user name"
+      },
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "RECAP_NAVIDROME_PASSWORD",
+      "label": {
+        "de": "Navidrome-Passwort",
+        "en": "Navidrome password"
+      },
+      "help": {
+        "de": "Für die Musikausschnitte in deiner Story.",
+        "en": "For the music clips in your story."
+      },
+      "type": "password",
+      "required": false
+    },
+    {
+      "key": "RECAP_NEXTCLOUD_USER",
+      "label": {
+        "de": "Nextcloud-Benutzername",
+        "en": "Nextcloud user name"
+      },
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "RECAP_NEXTCLOUD_APP_PASSWORD",
+      "label": {
+        "de": "Nextcloud-App-Passwort",
+        "en": "Nextcloud app password"
+      },
+      "help": {
+        "de": "Nextcloud → Einstellungen → Sicherheit → App-Passwort. Für Podcasts (GPodder Sync).",
+        "en": "Nextcloud → Settings → Security → app password. For podcasts (GPodder Sync)."
+      },
+      "type": "password",
+      "required": false
+    }
+  ],
+  "pages": [
+    {
+      "id": "recaps",
+      "title": {
+        "de": "Rückblicke",
+        "en": "Recaps"
+      },
+      "icon": "celebration"
+    }
+  ],
+  "hosts": [
+    "api.listenbrainz.org",
+    "coverartarchive.org",
+    "archive.org"
+  ],
+  "capabilities": []
+}

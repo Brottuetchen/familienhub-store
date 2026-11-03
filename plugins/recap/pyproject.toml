@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "familienhub-plugin-recap"
+version = "1.0.0"
+description = "Familienhub plugin: a monthly recap per person as a story page"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+# Only what the hub does not ship (fastapi, httpx, pydantic ... come from the hub).
+dependencies = []
+
+[project.entry-points."familienhub.plugins"]
+recap = "fh_plugin_recap.plugin:RecapPlugin"
+
+[tool.setuptools.packages.find]
+include = ["fh_plugin_recap*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
