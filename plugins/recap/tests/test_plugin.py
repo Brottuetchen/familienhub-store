@@ -592,3 +592,12 @@ def test_channel_head_without_title():
     from fh_plugin_recap import collectors
 
     assert collectors._channel_head(b"<rss><channel><item><title>Only episode</title></item></channel></rss>") == (None, None)
+
+
+def test_intro_collage_stays_dimmed_behind_the_text():
+    # the generic rise animation ends at opacity 1; the collage must use its own animation and a dimming filter
+    from fh_plugin_recap import story
+
+    assert ".slide.on .inner>.collage{animation:dim" in story.PAGE
+    assert "brightness(.32)" in story.PAGE
+    assert ".s-intro .inner>*:not(.collage){position:relative;z-index:1}" in story.PAGE
