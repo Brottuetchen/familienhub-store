@@ -609,7 +609,10 @@ html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);o
 .hero img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px}
 .strip{display:flex;gap:6px;margin-top:6px}
 .strip img{flex:1;min-width:0;aspect-ratio:1;object-fit:cover;border-radius:8px}
-.collage{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:40px 14px;opacity:.28;z-index:-1}
+.s-intro .inner{position:static}.s-intro .inner>*:not(.collage){position:relative;z-index:1}
+.collage{position:absolute;inset:0;z-index:0;display:grid;grid-template-columns:repeat(3,1fr);align-content:center;gap:12px;padding:70px 14px;filter:brightness(.32) saturate(1.15);pointer-events:none}
+.slide.on .inner>.collage{animation:dim 1.2s ease both}
+@keyframes dim{from{opacity:0}to{opacity:1}}
 .collage .cl{transform:rotate(var(--r))}
 .collage img,.collage .ph{display:block;width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px}
 .s-intro .inner{position:relative}
