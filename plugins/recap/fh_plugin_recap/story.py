@@ -9,6 +9,8 @@ import datetime as dt
 import html
 import math
 import random
+import re
+import zlib
 
 MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August",
           "September", "Oktober", "November", "Dezember"]
@@ -207,8 +209,25 @@ def count(value, digits=0):
     return f'<span class="count" data-to="{value}" data-dec="{digits}">{de_num(value, digits)}</span>'
 
 
-def img(src, cls=""):
-    return f'<img class="{cls}" src="{e(src)}" alt="">' if src else f'<span class="ph {cls}"></span>'
+_SKIP_WORDS = {"the", "a", "an", "der", "die", "das", "ein", "eine", "le", "la", "les", "el"}
+
+
+def initials(name):
+    """Up to two capital letters for the placeholder tile (never empty)."""
+    words = re.findall(r"[^\W_]+", str(name or ""))
+    if len(words) > 1 and words[0].lower() in _SKIP_WORDS:
+        words = words[1:]
+    letters = (words[0][0] + words[1][0]) if len(words) > 1 else (words[0][:2] if words else "")
+    return letters.upper() or "•"
+
+
+def img(src, cls="", name=""):
+    """The picture, or (when there is none) a generated tile with the initials of ``name``. The tile is plain CSS on the
+    slide's own accent colours; the angle of its gradient comes from the name so neighbours do not look alike."""
+    if src:
+        return f'<img class="{cls}" src="{e(src)}" alt="">'
+    angle = 115 + zlib.crc32(str(name).encode("utf-8")) % 90
+    return f'<div class="ph {cls}" style="--pa:{angle}deg"><strong>{e(initials(name))}</strong></div>'
 
 
 def render(data, prev, history):
@@ -226,13 +245,15 @@ def render(data, prev, history):
         content.append((key, weight, inner, backdrop))
 
     # Intro
-    images = [s.get("poster") for s in jf.get("series") or []] + [x.get("poster") for x in jf.get("movies") or []] \
-        + [x.get("cover") for x in mu.get("top_tracks") or []] + [x.get("cover") for x in ab.get("books") or []]
-    images = [i for i in images if i][:6]
+    pairs = [(s.get("poster"), s["name"]) for s in jf.get("series") or []] + [(x.get("poster"), x["name"]) for x in jf.get("movies") or []] \
+        + [(x.get("cover"), x["name"]) for x in mu.get("top_tracks") or []] + [(x.get("cover"), x["title"]) for x in ab.get("books") or []]
+    images = [p for p in pairs if p[0]][:6]
+    if images:  # a few missing pictures become placeholder tiles, so the collage keeps its shape
+        images += [p for p in pairs if not p[0]][:max(0, 6 - len(images))]
     leads = intro_leads(data, hl)
     lead = e(leads.get(d.get("lead"), leads["neutral"]))
     if V["intro"] == 1 and images:
-        collage = "".join(f'<img src="{e(i)}" alt="" style="--r:{(k * 37) % 24 - 12}deg">' for k, i in enumerate(images))
+        collage = "".join(f'<div class="cl" style="--r:{(k * 37) % 24 - 12}deg">{img(i, "", n)}</div>' for k, (i, n) in enumerate(images))
         intro = f'<div class="collage">{collage}</div>{kick("intro")}<h1 class="giant">{mname}</h1><p class="lead">{lead}</p>'
     elif V["intro"] == 2:
         intro = f'<p class="outline">{y}</p>{kick("intro")}<h1 class="giant">{mname}</h1><p class="lead">{lead}</p>'
@@ -268,22 +289,22 @@ def render(data, prev, history):
         top = jf["series"][0]
         se = top["seasons"]
         season_txt = (f"Staffel {se[0]} bis {se[-1]}" if len(se) > 1 else f"Staffel {se[0]}") if se else ""
-        rest = "".join(f'<li><b>{e(s["name"])}</b><span>{s["episodes"]} Folgen · {de_num(s["hours"], 1)} h</span></li>'
+        rest = "".join(f'<li>{img(s.get("poster"), "th", s["name"])}<b>{e(s["name"])}</b><span>{s["episodes"]} Folgen · {de_num(s["hours"], 1)} h</span></li>'
                        for s in jf["series"][1:4])
         stats = f'<b>{top["episodes"]} Folgen</b> · {de_num(top["hours"], 1)} Stunden{" · " + season_txt if season_txt else ""}'
         dl = delta(jf["series_hours"], P("jellyfin", "series_hours"))
         if V["series"] == 1 and top.get("poster"):
             add("series", t["series_hours"], f'{kick("series")}<p class="big">{count(top["episodes"])}<small> Folgen</small></p>'
                 f'<h2 class="title">{e(top["name"])}</h2><p class="lead">{de_num(top["hours"], 1)} Stunden'
-                f'{" · " + season_txt if season_txt else ""}</p><ol class="list">{rest}</ol>{dl}', top["poster"])
+                f'{" · " + season_txt if season_txt else ""}</p><ol class="list thumbs">{rest}</ol>{dl}', top["poster"])
         elif V["series"] == 2 and len([s for s in jf["series"][:3] if s.get("poster")]) >= 2:
-            pod = "".join(f'<figure class="p{k + 1}">{img(s.get("poster"))}<b>{k + 1}</b><figcaption>{e(s["name"])}'
+            pod = "".join(f'<figure class="p{k + 1}">{img(s.get("poster"), "", s["name"])}<b>{k + 1}</b><figcaption>{e(s["name"])}'
                           f'<span>{s["episodes"]} Folgen</span></figcaption></figure>' for k, s in enumerate(jf["series"][:3]))
             add("series", t["series_hours"], f'{kick("series")}<h2 class="title">{e(top["name"])}</h2><p class="lead">{stats}</p>'
                 f'<div class="podium">{pod}</div><p class="foot">{jf["episodes"]} Folgen aus {jf["series_count"]} Serien</p>{dl}')
         else:
             add("series", t["series_hours"], f'{kick("series")}{img(top.get("poster"), "poster tilt") if top.get("poster") else ""}'
-                f'<h2 class="title">{e(top["name"])}</h2><p class="lead">{stats}</p><ol class="list">{rest}</ol>'
+                f'<h2 class="title">{e(top["name"])}</h2><p class="lead">{stats}</p><ol class="list thumbs">{rest}</ol>'
                 f'<p class="foot">{jf["episodes"]} Folgen aus {jf["series_count"]} Serien</p>{dl}')
 
     # Couch day
@@ -318,11 +339,11 @@ def render(data, prev, history):
         head = f'{kick("movies")}<p class="big">{count(n)}<small> {"Film" if n == 1 else "Filme"}</small></p>'
         dl = delta(jf["movie_hours"], P("jellyfin", "movie_hours"))
         if V["movies"] == 1:
-            fan = "".join(f'<figure style="--i:{k};--n:{len(jf["movies"][:5])}">{img(x.get("poster"))}</figure>' for k, x in enumerate(jf["movies"][:5]))
+            fan = "".join(f'<figure style="--i:{k};--n:{len(jf["movies"][:5])}">{img(x.get("poster"), "", x["name"])}</figure>' for k, x in enumerate(jf["movies"][:5]))
             names = ", ".join(e(x["name"]) for x in jf["movies"])
             add("movies", t["movie_hours"], f'{head}<div class="fan">{fan}</div><p class="lead">{names}</p>{dl}')
         else:
-            grid = "".join(f'<figure>{img(x.get("poster"))}<figcaption>{e(x["name"])}{year(x)}'
+            grid = "".join(f'<figure>{img(x.get("poster"), "", x["name"])}<figcaption>{e(x["name"])}{year(x)}'
                            f'</figcaption></figure>' for x in jf["movies"])
             add("movies", t["movie_hours"], f'{head}<div class="posters">{grid}</div>{dl}')
 
@@ -332,16 +353,16 @@ def render(data, prev, history):
         dl = delta(mu["minutes"], P("music", "minutes"))
         cover = next((x.get("cover") for x in mu["top_tracks"] if x.get("cover")), None) or ta.get("cover")
         if V["music"] == 1:
-            ranks = "".join(f'<li><b>{k + 1}</b><span>{e(a["name"])}</span><em>{a["plays"]}×</em></li>' for k, a in enumerate(mu["top_artists"]))
+            ranks = "".join(f'<li><b>{k + 1}</b>{img(a.get("cover"), "th", a["name"])}<span>{e(a["name"])}</span><em>{a["plays"]}×</em></li>' for k, a in enumerate(mu["top_artists"]))
             add("music", t["music_hours"], f'{kick("music")}<p class="lead">{de_num(mu["plays"])} Wiedergaben, {de_num(mu["minutes"])} Minuten</p>'
-                f'<p class="sub">Deine Top-Künstler</p><ol class="ranks">{ranks}</ol>{dl}', cover)
+                f'<p class="sub">Deine Top-Künstler</p><ol class="ranks thumbs">{ranks}</ol>{dl}', cover)
         elif V["music"] == 2:
             eq = "".join(f'<i style="--d:{(k * 0.13) % 1:.2f}s"></i>' for k in range(16))
             add("music", t["music_hours"], f'{kick("music")}<div class="eq">{eq}</div><p class="big">{count(mu["minutes"])}<small> Minuten</small></p>'
                 f'<p class="lead">Ganz vorne: <b>{e(ta["name"])}</b> mit {ta["plays"]} Wiedergaben. Dazu {mu["artists_count"] - 1} '
                 f'weitere Künstler.</p>{dl}')
         else:
-            tracks = "".join(f'<li>{img(x.get("cover"), "cv")}<b>{e(x["name"])}</b><span>{e(x["artist"])} · {x["plays"]}×</span></li>'
+            tracks = "".join(f'<li>{img(x.get("cover"), "cv", x["name"])}<b>{e(x["name"])}</b><span>{e(x["artist"])} · {x["plays"]}×</span></li>'
                              for x in mu["top_tracks"])
             add("music", t["music_hours"], f'{kick("music")}<p class="big">{count(mu["minutes"])}<small> Minuten</small></p>'
                 f'<p class="lead">{de_num(mu["plays"])} Wiedergaben von {mu["artists_count"]} Künstlern. Ganz vorne: '
@@ -352,7 +373,7 @@ def render(data, prev, history):
         b = items[0]
         title = b.get("title")
         meta = f'{e(b.get("author") or "")}{" · " if b.get("author") else ""}<b>{de_num(b["hours"], 1)} Stunden</b>'
-        rest = "".join(f'<li><b>{e(x["title"])}</b><span>{e(x.get("author") or str(x.get("episodes", "")) + " Folgen")}'
+        rest = "".join(f'<li>{img(x.get("cover"), "th", x["title"])}<b>{e(x["title"])}</b><span>{e(x.get("author") or str(x.get("episodes", "")) + " Folgen")}'
                        f' · {de_num(x["hours"], 1)} h{" · ✓ fertig" if x.get("finished") else ""}</span></li>' for x in items[1:4])
         dl = delta(minutes, prev_minutes)
         if V[key] == 1 and b.get("cover"):
@@ -360,7 +381,7 @@ def render(data, prev, history):
                 f'<p class="foot">{sub}</p>{foot}{dl}', b["cover"])
         else:
             add(key, hours, f'{kick(key)}{img(b.get("cover"), "poster square tilt") if b.get("cover") else ""}<h2 class="title">{e(title)}</h2>'
-                f'<p class="lead">{meta}</p><ol class="list">{rest}</ol><p class="foot">{sub}</p>{foot}{dl}')
+                f'<p class="lead">{meta}</p><ol class="list thumbs">{rest}</ol><p class="foot">{sub}</p>{foot}{dl}')
 
     if ab.get("books"):
         fin = f'<p class="foot">{ab["finished"]} {"Hörbuch" if ab["finished"] == 1 else "Hörbücher"} zu Ende gehört.</p>' if ab["finished"] else ""
@@ -589,7 +610,8 @@ html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);o
 .strip{display:flex;gap:6px;margin-top:6px}
 .strip img{flex:1;min-width:0;aspect-ratio:1;object-fit:cover;border-radius:8px}
 .collage{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:40px 14px;opacity:.28;z-index:-1}
-.collage img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px;transform:rotate(var(--r))}
+.collage .cl{transform:rotate(var(--r))}
+.collage img,.collage .ph{display:block;width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px}
 .s-intro .inner{position:relative}
 .card{background:rgba(0,0,0,.32);border-radius:20px;padding:22px;backdrop-filter:blur(6px)}
 .facts{display:grid;grid-template-columns:1fr 1fr;gap:16px 12px}
@@ -616,6 +638,13 @@ html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);o
 .tap.l{left:0}.tap.r{right:0;width:66%}
 .np{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:2;text-align:center;font-size:.78rem;font-weight:700;opacity:.75;padding:0 70px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .snd{position:fixed;z-index:6;top:calc(env(safe-area-inset-top) + 24px);right:max(12px,calc(50vw - 248px));width:40px;height:40px;border-radius:50%;border:0;background:rgba(0,0,0,.35);color:#fff;font-size:1.1rem;cursor:pointer}
+.thumbs .th{width:44px;height:44px;border-radius:10px;object-fit:cover;background:rgba(255,255,255,.18);align-self:center}
+.list.thumbs li{grid-template-columns:28px 44px 1fr;align-items:center}
+.list.thumbs .th{grid-row:span 2}
+.ranks.thumbs li{grid-template-columns:44px 44px 1fr auto;align-items:center}
+.slide .ph{container-type:inline-size;display:grid;place-items:center;overflow:hidden;color:#111;
+ background:linear-gradient(var(--pa,135deg),var(--accent),color-mix(in srgb,var(--accent) 38%,var(--blob2)))}
+.slide .ph strong{font-size:1.3rem;font-size:34cqw;font-weight:900;letter-spacing:-.02em;line-height:1;opacity:.8}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style></head>
 <body class="{{BODY}}">

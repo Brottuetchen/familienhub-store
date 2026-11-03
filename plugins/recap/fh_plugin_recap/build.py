@@ -55,12 +55,13 @@ async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, r
     data: Dict[str, Any] = {"month": month, "generated": dt.datetime.now(tz).isoformat(timespec="seconds"),
                             "seed": str(user_id), "errors": {}}
     try:
+        covers = collectors.Covers()  # one time budget and one cap for all cover lookups of this build
         async with collectors.new_client() as client:
             steps: Dict[str, Callable[[], Awaitable[Any]]] = {
-                "jellyfin": lambda: collectors.collect_jellyfin(client, cfg, start, end, img),
-                "music": lambda: collectors.collect_music(client, cfg, start, end, img, tz),
-                "audiobooks": lambda: collectors.collect_audiobookshelf(client, cfg, start, end, img, tz),
-                "podcasts": lambda: collectors.collect_podcasts(client, cfg, start, end, img),
+                "jellyfin": lambda: collectors.collect_jellyfin(client, cfg, start, end, img, covers),
+                "music": lambda: collectors.collect_music(client, cfg, start, end, img, tz, covers),
+                "audiobooks": lambda: collectors.collect_audiobookshelf(client, cfg, start, end, img, tz, covers),
+                "podcasts": lambda: collectors.collect_podcasts(client, cfg, start, end, img, covers),
                 "photos": lambda: collectors.collect_immich(client, cfg, start, end, img),
             }
             wanted = cfg.sources()
