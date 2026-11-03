@@ -73,7 +73,7 @@ def test_manifest_is_valid_and_matches_the_code():
     assert all(s["key"].startswith("RECAP_") for s in manifest["settings"] + manifest["personal_settings"])
     secret = {s["key"] for s in manifest["settings"] + manifest["personal_settings"] if s["type"] == "password"}
     assert {"RECAP_JELLYFIN_TOKEN", "RECAP_LISTENBRAINZ_TOKEN", "RECAP_ABS_TOKEN", "RECAP_IMMICH_KEY",
-            "RECAP_NAVIDROME_PASSWORD", "RECAP_NEXTCLOUD_APP_PASSWORD"} == secret
+            "RECAP_NAVIDROME_PASSWORD", "RECAP_NEXTCLOUD_APP_PASSWORD", "RECAP_ROMM_TOKEN"} == secret
     assert [p["id"] for p in manifest["pages"]] == ["recaps"] and manifest["pages"][0]["title"] == {"de": "Rückblicke", "en": "Recaps"}
     assert manifest["pages"][0]["icon"] == "celebration"
     assert plugin.schedule_minutes == 60 and plugin.has_personal_test
@@ -601,3 +601,46 @@ def test_intro_collage_stays_dimmed_behind_the_text():
     assert ".slide.on .inner>.collage{animation:dim" in story.PAGE
     assert "brightness(.32)" in story.PAGE
     assert ".s-intro .inner>*:not(.collage){position:relative;z-index:1}" in story.PAGE
+
+
+# --- redesign ---
+
+def test_rebuild_keeps_the_design_and_a_redesign_changes_it(people, services):
+    first = build_for()
+    assert build_for()["design"] == first["design"] and "design_round" not in {k for k, v in first.items() if v}
+    fresh = build_for(redesign=True)
+    old, new = first["design"], fresh["design"]
+    assert fresh["design_round"] == 1 and new["palette"] != old["palette"]
+    assert new["shape"] != old["shape"] and new["type"] != old["type"]
+    assert store.read_snapshot(1, MONTH)["design"] == new
+    assert build_for()["design"] == new and store.read_snapshot(1, MONTH)["design_round"] == 1  # the new design sticks
+    assert build_for(redesign=True)["design_round"] == 2
+
+
+def test_redesign_avoids_every_choice_of_the_current_design():
+    from fh_plugin_recap import story
+    for seed in range(12):
+        data = {"month": MONTH, "seed": str(seed)}
+        current = story.choose_design(data, [])
+        new = story.choose_design({**data, "design_round": 1}, [], current=current)
+        assert new["palette"] != current["palette"] and new["shape"] != current["shape"] and new["type"] != current["type"]
+        for group, sizes in (("variants", story.VARIANTS), ("texts", {k: len(v) for k, v in story.KICKERS.items()})):
+            for key, value in new[group].items():
+                if sizes[key] > 1:
+                    assert value != current[group][key], (seed, group, key)
+
+
+def test_build_endpoint_passes_redesign_and_rebuilds_an_existing_month(client, fake_build, monkeypatch):
+    seen = []
+    real = build.start
+
+    def spy(*args, **kw):
+        seen.append(kw.get("redesign"))
+        return real(*args, **kw)
+
+    monkeypatch.setattr(build, "start", spy)
+    client.post("/api/plugins/recap/build")
+    wait_for_months(client)
+    assert client.post("/api/plugins/recap/build?redesign=true").json()["status"] == "started"
+    wait_for_months(client)
+    assert seen == [False, True]

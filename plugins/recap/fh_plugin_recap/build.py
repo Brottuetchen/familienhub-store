@@ -126,10 +126,16 @@ async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, r
             store.write_snapshot(user_id, month, data)
             return data
         data["highlights"] = story.highlights(data, history)
-        data["design"] = old.get("design") if old.get("design") and not redesign else story.choose_design(data, history)
+        if old.get("design") and not redesign:
+            data["design"] = old["design"]
+        else:
+            # A redesign rolls again with a new seed and also avoids everything the month's current design used
+            data["design_round"] = int(old.get("design_round") or 0) + (1 if old.get("design") else 0)
+            data["design"] = story.choose_design(data, history, current=old.get("design") if redesign else None)
         if "lead" not in data["design"]:
             data["design"]["lead"] = story.pick_lead(data, data["highlights"], history)
         data["notified"] = bool(old.get("notified"))
+        data.setdefault("design_round", int(old.get("design_round") or 0))
         (work / "index.html").write_text(story.render(data, prev, history), encoding="utf-8")
 
         target = store.month_dir(user_id, month)
@@ -173,7 +179,7 @@ async def wait_all() -> None:
         await asyncio.gather(*list(_background), return_exceptions=True)
 
 
-def start(user_id: int, month: str, cfg: collectors.Config, tz, *,
+def start(user_id: int, month: str, cfg: collectors.Config, tz, *, redesign: bool = False,
           on_done: Optional[Callable[[int, str, Dict[str, Any]], Awaitable[None]]] = None, log=None) -> str:
     """Starts a build in the background: ``"started"``, ``"running"`` (this month is being built) or ``"busy"``
     (another build is running). Must be called from the event loop."""
@@ -184,7 +190,7 @@ def start(user_id: int, month: str, cfg: collectors.Config, tz, *,
 
     async def job() -> None:
         try:
-            data = await asyncio.wait_for(build_month(user_id, month, cfg, tz, redesign=False), BUILD_TIMEOUT)
+            data = await asyncio.wait_for(build_month(user_id, month, cfg, tz, redesign=redesign), BUILD_TIMEOUT)
             if on_done is not None and not data.get("empty"):
                 await on_done(user_id, month, data)
         except asyncio.CancelledError:  # pragma: no cover - shutdown
