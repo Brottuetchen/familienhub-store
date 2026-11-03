@@ -66,7 +66,7 @@ def build_for(uid=1, month=MONTH, **kw):
 def test_manifest_is_valid_and_matches_the_code():
     manifest = validate_manifest(json.loads((ROOT / "familienhub-plugin.json").read_text()))
     plugin = RecapPlugin()
-    assert plugin.id == manifest["id"] == "recap" and manifest["version"] == "1.0.0"
+    assert plugin.id == manifest["id"] == "recap" and manifest["version"] == plugin.version
     assert {s.key for s in plugin.settings} == {s["key"] for s in manifest["settings"]} == set(mod.GLOBAL_KEYS)
     assert {s.key for s in plugin.personal_settings} == {s["key"] for s in manifest["personal_settings"]} == set(mod.PERSONAL_KEYS)
     assert all(not s["required"] for s in manifest["settings"] + manifest["personal_settings"])
@@ -575,3 +575,20 @@ def test_views_escape_markup(people):
     (store.month_dir(1, MONTH) / "index.html").write_text("x")
     store.write_snapshot(1, MONTH, {"month": MONTH, "totals": {"media_hours": 1}, "photos": {"total": "<b>9</b>"}})
     assert "<b>9</b>" not in views.render_index(1) and "&lt;b&gt;" in views.render_index(1)
+
+
+def test_channel_head_reads_title_and_cover_of_large_feeds():
+    from fh_plugin_recap import collectors
+
+    items = b"<item><title>Episode</title><description>" + b"x" * (collectors.MAX_FEED_BYTES + 10) + b"</description></item>"
+    raw = (b'<?xml version="1.0"?><rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel>'
+           b"<title><![CDATA[Hotel &amp; Matze]]></title>"
+           b'<itunes:image href="https://pod.example.org/big.jpg"/>' + items + b"</channel></rss>")
+    assert len(raw) > collectors.MAX_FEED_BYTES
+    assert collectors._channel_head(raw) == ("Hotel & Matze", "https://pod.example.org/big.jpg")
+
+
+def test_channel_head_without_title():
+    from fh_plugin_recap import collectors
+
+    assert collectors._channel_head(b"<rss><channel><item><title>Only episode</title></item></channel></rss>") == (None, None)
