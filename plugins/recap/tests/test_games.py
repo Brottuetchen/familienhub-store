@@ -377,3 +377,24 @@ def test_connection_test_for_games(people, gamedirs, services):
     result = run(RecapPlugin().test_personal_settings(SimpleNamespace(id=2), {"RECAP_GAMES_DEVICES": "deck, pc"}))
     assert result["ok"] and "Games: connected" in result["message"] and str(gamedirs[0]) not in result["message"]
     assert run(RecapPlugin().test_personal_settings(SimpleNamespace(id=2), {}))["level"] == "info"
+
+
+def test_steam_terms_loosen_dash_and_edition_suffixes():
+    assert collectors.steam_terms("The Witcher 3 Wild Hunt — Remastered") == [
+        "The Witcher 3 Wild Hunt — Remastered", "The Witcher 3 Wild Hunt"]
+    assert collectors.steam_terms("Crimson Desert Enhanced") == ["Crimson Desert Enhanced", "Crimson Desert"]
+    assert collectors.steam_terms("Cyberpunk 2077") == ["Cyberpunk 2077"]
+
+
+def test_steam_cover_retries_with_a_looser_term(tmp_path):
+    async def go():
+        async with collectors.new_client() as client:
+            return await collectors.steam_cover(client, tmp_path, "The Witcher 3 Wild Hunt — Remastered", "gm-w3")
+
+    with respx.mock(using="httpx", assert_all_called=False) as http:
+        search = http.get("https://store.steampowered.com/api/storesearch/").mock(side_effect=lambda r: httpx.Response(
+            200, json={"items": [{"id": 292030}]} if r.url.params["term"] == "The Witcher 3 Wild Hunt" else {"items": []}))
+        http.get("https://cdn.cloudflare.steamstatic.com/steam/apps/292030/library_600x900.jpg").mock(
+            return_value=httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"}))
+        out = run(go())
+    assert out == "img/gm-w3.jpg" and search.call_count == 2

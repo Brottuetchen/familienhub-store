@@ -786,11 +786,31 @@ def local_game_cover(roms_dir: str, system: str, rel: str, img: Path, name: str)
     return None
 
 
+EDITION_RE = re.compile(r"\s+(?:remastered|enhanced|definitive|complete|goty|game of the year|edition|deluxe)\b.*$",
+                        re.IGNORECASE)
+
+
+def steam_terms(term: str) -> List[str]:
+    """Search terms from exact to loose: the store search finds nothing for e.g. "Wild Hunt — Remastered", so also
+    try the part before a dash and the name without an edition suffix."""
+    out: List[str] = []
+    head = re.split(r"\s+[—–-]\s+", term)[0]
+    for candidate in (term, head, EDITION_RE.sub("", head)):
+        candidate = candidate.strip(" —–-")
+        if candidate and candidate not in out:
+            out.append(candidate)
+    return out
+
+
 async def steam_cover(client: httpx.AsyncClient, img: Path, term: str, name: str) -> Optional[str]:
     """Box art from the public Steam store (no key): the first search hit's portrait, else its header picture."""
-    res = await get_json(client, STEAM_SEARCH, params={"term": term, "l": "german", "cc": "DE"})
-    items = res.get("items") or []
-    app_id = str((items[0] if items else {}).get("id") or "")
+    app_id = ""
+    for candidate in steam_terms(term):
+        res = await get_json(client, STEAM_SEARCH, params={"term": candidate, "l": "german", "cc": "DE"})
+        items = res.get("items") or []
+        app_id = str((items[0] if items else {}).get("id") or "")
+        if app_id.isdigit():
+            break
     if not app_id.isdigit():
         return None
     for file in ("library_600x900.jpg", "header.jpg"):
