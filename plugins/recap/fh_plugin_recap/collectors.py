@@ -10,6 +10,7 @@ import base64
 import collections
 import datetime as dt
 import hashlib
+import html
 import re
 import secrets
 import xml.etree.ElementTree as ET
@@ -421,6 +422,10 @@ async def collect_podcasts(client, cfg: Config, start, end, img: Path) -> Dict[s
                     title = channel.findtext("title") or title
                     node = channel.find("{http://www.itunes.com/dtds/podcast-1.0.dtd}image")
                     image = node.get("href") if node is not None else channel.findtext("image/url")
+                else:
+                    # Long-running podcasts have feeds of several MB: read title and image from the channel head only
+                    head_title, head_image = _channel_head(raw)
+                    title, image = head_title or title, head_image
             except (httpx.HTTPError, ET.ParseError, AttributeError, ValueError):
                 pass
         cov = await save_image(client, image, img, f"pc-{slug(title)}") if image and _safe_feed_url(image) and not out else None
@@ -428,6 +433,16 @@ async def collect_podcasts(client, cfg: Config, start, end, img: Path) -> Dict[s
     total = sum(p["secs"] for p in pods.values())
     return {"connected": True, "hours": round(total / 3600, 1), "minutes": round(total / 60),
             "episodes": sum(len(p["episodes"]) for p in pods.values()), "podcasts": out}
+
+
+def _channel_head(raw: bytes):
+    """Title and cover from the part of a feed before the first <item>, without parsing the XML."""
+    head = raw[:262144].split(b"<item", 1)[0].decode("utf-8", "replace")
+    title = re.search(r"<title>\s*(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?\s*</title>", head, re.S)
+    image = (re.search(r"<itunes:image[^>]*href=[\"']([^\"']+)", head)
+             or re.search(r"<image>.*?<url>\s*([^<\s]+)\s*</url>", head, re.S))
+    text = html.unescape(title.group(1)).strip()[:200] if title else None
+    return text or None, image.group(1) if image else None
 
 
 # --- Immich ----------------------------------------------------------------------------------------------------
