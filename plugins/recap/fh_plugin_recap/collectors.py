@@ -6,6 +6,7 @@ All HTTP goes through ``httpx`` with timeouts. Nothing here logs a URL, a token 
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import collections
 import datetime as dt
@@ -16,7 +17,7 @@ import secrets
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote, urlencode, urlparse
 
 import httpx
@@ -24,10 +25,17 @@ import httpx
 LISTENBRAINZ = "https://api.listenbrainz.org"
 COVERART = "https://coverartarchive.org"
 USER_AGENT = "familienhub-recap/1.0"
-MAX_IMAGE_BYTES = 6 * 1024 * 1024
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_FEED_BYTES = 3 * 1024 * 1024
 CLIP_SECONDS = 11
 CLIP_COUNT = 10
+COVER_CONCURRENCY = 4  # cover lookups running at the same time
+COVER_MAX_JOBS = 80  # lookups per build; further items get the generated placeholder
+COVER_SECONDS = 180  # all lookups of one build together
+COVER_ITEM_SECONDS = 40  # one lookup with all its fallback steps
+NAVI_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+LASTFM_PLACEHOLDER = "2a96cbd8b46e442fc41c2b86b821562f"  # the grey star image Last.fm serves for "no picture"
+COVER_ERRORS = (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError, LookupError)
 ID_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 
 
@@ -110,19 +118,134 @@ def sniff_image(data: bytes) -> Optional[str]:
 async def save_image(client: httpx.AsyncClient, url: str, directory: Path, name: str,
                      headers: Optional[dict] = None) -> Optional[str]:
     """Downloads an image into ``directory`` and returns its relative path (``img/<name>.<ext>``), or None.
-    Only real images are kept (checked by content, not by what the server claims)."""
+    Only http(s) addresses, at most ``MAX_IMAGE_BYTES``, a content type of ``image/*`` (when the server names one)
+    and real image data (checked by content, not by what the server claims) are accepted."""
+    if not _safe_feed_url(url):
+        return None
+    content = b""
     try:
-        response = await client.get(url, headers=headers, timeout=30.0)
-        response.raise_for_status()
+        async with client.stream("GET", url, headers=headers, timeout=30.0) as response:
+            response.raise_for_status()
+            kind = response.headers.get("content-type", "").split(";")[0].strip().lower()
+            if kind and not kind.startswith("image/"):
+                return None
+            async for chunk in response.aiter_bytes():
+                content += chunk
+                if len(content) > MAX_IMAGE_BYTES:
+                    return None
     except (httpx.HTTPError, ValueError):
         return None
-    content = response.content
     ext = sniff_image(content)
-    if ext is None or len(content) < 500 or len(content) > MAX_IMAGE_BYTES:
+    if ext is None or len(content) < 500:
         return None
     filename = f"{name}.{ext}"
     (directory / filename).write_bytes(content)
     return f"img/{filename}"
+
+
+class Covers:
+    """Runs the cover lookups of one build: a few at a time, each with its own time limit, all together within one
+    time budget and at most ``max_jobs`` of them. A lookup that fails, times out or is over the cap just gives None
+    (the story then shows a generated placeholder), so covers can never fail or stall a build."""
+
+    def __init__(self, concurrency: int = COVER_CONCURRENCY, max_jobs: int = COVER_MAX_JOBS,
+                 seconds: float = COVER_SECONDS, item_seconds: float = COVER_ITEM_SECONDS) -> None:
+        self.sem = asyncio.Semaphore(concurrency)
+        self.left = max_jobs
+        self.seconds = seconds
+        self.item_seconds = item_seconds
+        self.deadline: Optional[float] = None
+
+    async def one(self, make: Callable[[], Awaitable[Optional[str]]]) -> Optional[str]:
+        loop = asyncio.get_running_loop()
+        if self.left <= 0:
+            return None
+        self.left -= 1
+        if self.deadline is None:
+            self.deadline = loop.time() + self.seconds
+        async with self.sem:
+            remaining = self.deadline - loop.time()
+            if remaining <= 0:
+                return None
+            try:
+                return await asyncio.wait_for(make(), min(self.item_seconds, remaining))
+            except Exception:  # noqa: BLE001 - timeouts and anything else: no cover, never a failed build
+                return None
+
+    async def fill(self, jobs: List[Tuple[dict, str, Callable[[], Awaitable[Optional[str]]]]]) -> None:
+        """``jobs``: (item, field, lookup). Sets ``item[field]`` to the stored image path or None."""
+        results = await asyncio.gather(*(self.one(make) for _, _, make in jobs))
+        for (item, field, _), path in zip(jobs, results):
+            item[field] = path
+
+
+# --- Navidrome (Subsonic API), used for soundtrack and as a cover source ----------------------------------------
+
+def navi_url(cfg: "Config", endpoint: str, **extra) -> str:
+    salt = secrets.token_hex(6)
+    auth = {"u": cfg.navidrome_user, "t": hashlib.md5((cfg.navidrome_password + salt).encode()).hexdigest(),  # noqa: S324 - Subsonic's token scheme
+            "s": salt, "v": "1.16.1", "c": "familienhub-recap", "f": "json"}
+    return f"{cfg.navidrome_url}/rest/{endpoint}?" + urlencode({**auth, **extra})
+
+
+async def navi_json(client, cfg: "Config", endpoint: str, **extra) -> dict:
+    res = (await get_json(client, navi_url(cfg, endpoint, **extra)))["subsonic-response"]
+    if res.get("status", "ok") != "ok":
+        raise LookupError("Navidrome error")
+    return res
+
+
+async def navi_cover(client, cfg: "Config", cover_id: Any, directory: Path, name: str) -> Optional[str]:
+    if not cover_id or not NAVI_ID_RE.match(str(cover_id)):
+        return None
+    return await save_image(client, navi_url(cfg, "getCoverArt.view", id=cover_id, size=500), directory, name)
+
+
+async def navi_song_cover(client, cfg: "Config", directory: Path, title: str, artist: str, name: str) -> Optional[str]:
+    """Cover of the Navidrome song that matches title and artist."""
+    wanted_title, wanted_artist = title.casefold(), artist.casefold()
+    for query in (title, f"{title} {artist}"):
+        res = await navi_json(client, cfg, "search3", query=query, songCount=20, artistCount=0, albumCount=0)
+        songs = res.get("searchResult3", {}).get("song", [])
+        same = [x for x in songs if str(x.get("artist") or "").casefold() == wanted_artist]
+        hit = (next((x for x in same if str(x.get("title") or "").casefold() == wanted_title), None)
+               or next((x for x in same if wanted_title in str(x.get("title") or "").casefold()), None))
+        if hit:
+            return await navi_cover(client, cfg, hit.get("coverArt") or hit.get("albumId"), directory, name)
+    return None
+
+
+async def navi_artist_cover(client, cfg: "Config", directory: Path, artist: str, name: str) -> Optional[str]:
+    """An artist picture from Navidrome: its artist info image, else the cover of the artist's most played album or song."""
+    wanted = artist.casefold()
+    res = await navi_json(client, cfg, "search3", query=artist, artistCount=5, songCount=0, albumCount=0)
+    match = next((x for x in res.get("searchResult3", {}).get("artist", []) if str(x.get("name") or "").casefold() == wanted), None)
+    if match and NAVI_ID_RE.match(str(match.get("id"))):
+        try:
+            info = (await navi_json(client, cfg, "getArtistInfo2.view", id=match["id"], count=0)).get("artistInfo2", {})
+            for key in ("largeImageUrl", "mediumImageUrl"):
+                url = info.get(key)
+                if url and LASTFM_PLACEHOLDER not in str(url):
+                    path = await save_image(client, url, directory, name)
+                    if path:
+                        return path
+        except COVER_ERRORS:
+            pass
+        try:
+            albums = (await navi_json(client, cfg, "getArtist.view", id=match["id"])).get("artist", {}).get("album", [])
+            for album in sorted(albums, key=lambda x: -(x.get("playCount") or 0))[:2]:
+                path = await navi_cover(client, cfg, album.get("coverArt") or album.get("id"), directory, name)
+                if path:
+                    return path
+        except COVER_ERRORS:
+            pass
+    res = await navi_json(client, cfg, "search3", query=artist, songCount=30, artistCount=0, albumCount=0)
+    songs = [x for x in res.get("searchResult3", {}).get("song", []) if str(x.get("artist") or "").casefold() == wanted]
+    for song in sorted(songs, key=lambda x: -(x.get("playCount") or 0))[:2]:
+        path = await navi_cover(client, cfg, song.get("coverArt") or song.get("albumId"), directory, name)
+        if path:
+            return path
+    return None
 
 
 def local_tz(name: str):
@@ -152,7 +275,51 @@ async def jellyfin_user_id(client: httpx.AsyncClient, cfg: Config) -> Optional[s
     return None
 
 
-async def collect_jellyfin(client, cfg: Config, start, end, img: Path) -> Dict[str, Any]:
+async def jellyfin_poster(client, cfg: Config, img: Path, kind: str, item_id: Optional[str], name: str,
+                          year: Optional[int]) -> Optional[str]:
+    """Primary image of the item; if it is gone (Maintainerr deletes what was watched) search the library by name,
+    and as the last resort ask Jellyfin's remote search (TMDb and others) for a picture and download that."""
+    base = cfg.jellyfin_url
+    headers = {"Authorization": f'MediaBrowser Token="{cfg.jellyfin_token}"'}
+    file_name = f"jf-{kind.lower()}-{slug(name)}"
+    tried = set()
+    if item_id and ID_RE.match(str(item_id)):
+        tried.add(item_id)
+        path = await save_image(client, f"{base}/Items/{item_id}/Images/Primary?maxHeight=600&quality=85", img, file_name, headers)
+        if path:
+            return path
+    try:
+        params = {"searchTerm": name, "IncludeItemTypes": kind, "Recursive": "true", "Limit": 5}
+        found = (await get_json(client, f"{base}/Items", headers=headers, params={**params, **({"Years": year} if year else {})}))["Items"]
+        if not found and year:
+            found = (await get_json(client, f"{base}/Items", headers=headers, params=params))["Items"]
+    except COVER_ERRORS:
+        found = []
+    found = [x for x in found if ID_RE.match(str(x.get("Id"))) and x["Id"] not in tried
+             and ("ImageTags" not in x or (x["ImageTags"] or {}).get("Primary"))]
+    found.sort(key=lambda x: str(x.get("Name") or "").casefold() != name.casefold())
+    for item in found[:2]:
+        path = await save_image(client, f"{base}/Items/{item['Id']}/Images/Primary?maxHeight=600&quality=85", img, file_name, headers)
+        if path:
+            return path
+    try:
+        info = {"Name": name, **({"Year": year} if year else {})}
+        results = await get_json(client, f"{base}/Items/RemoteSearch/{kind}", headers=headers,
+                                 body={"SearchInfo": info, "IncludeDisabledProviders": False})
+    except COVER_ERRORS:
+        return None
+    urls = [re.sub(r"(image\.tmdb\.org/t/p/)original/", r"\1w500/", str(r["ImageUrl"])) for r in results[:10]
+            if isinstance(r, dict) and _safe_feed_url(r.get("ImageUrl")) and "/missing/" not in str(r["ImageUrl"])]
+    urls.sort(key=lambda u: "image.tmdb.org" not in u)  # TMDb first, the order stays otherwise
+    for url in urls[:3]:
+        path = await save_image(client, url, img, file_name)  # a third-party image host: never send the Jellyfin key
+        if path:
+            return path
+    return None
+
+
+async def collect_jellyfin(client, cfg: Config, start, end, img: Path, covers: Optional["Covers"] = None) -> Dict[str, Any]:
+    covers = covers or Covers()
     base = cfg.jellyfin_url
     headers = {"Authorization": f'MediaBrowser Token="{cfg.jellyfin_token}"'}
     user_id = await jellyfin_user_id(client, cfg)
@@ -219,27 +386,14 @@ async def collect_jellyfin(client, cfg: Config, start, end, img: Path) -> Dict[s
         except (httpx.HTTPError, ValueError, AttributeError):
             pass
 
-    async def poster(item_id, name):
-        if not item_id:
-            try:
-                found = (await get_json(client, f"{base}/Items", headers=headers, params={
-                    "searchTerm": name, "IncludeItemTypes": "Series,Movie", "Recursive": "true", "Limit": 1}))["Items"]
-                item_id = found[0]["Id"] if found else None
-            except (httpx.HTTPError, ValueError, KeyError, TypeError, IndexError):
-                item_id = None
-        if not item_id or not ID_RE.match(str(item_id)):
-            return None
-        return await save_image(client, f"{base}/Items/{item_id}/Images/Primary?maxHeight=600&quality=85", img,
-                                f"jf-{slug(name)}", headers)
-
     top_series = sorted(series.items(), key=lambda kv: -kv[1]["secs"])
-    series_out = []
-    for i, (n, v) in enumerate(top_series[:5]):
-        series_out.append({"name": n, "hours": round(v["secs"] / 3600, 1), "episodes": v["episodes"],
-                           "seasons": sorted(v["seasons"]), "poster": await poster(v["id"], n) if i < 3 else None})
+    series_out = [{"name": n, "hours": round(v["secs"] / 3600, 1), "episodes": v["episodes"],
+                   "seasons": sorted(v["seasons"]), "poster": None} for n, v in top_series[:5]]
     movies.sort(key=lambda x: -x["secs"])
-    movies_out = [{"name": x["name"], "year": x["year"], "hours": round(x["secs"] / 3600, 1),
-                   "poster": await poster(x["id"], x["name"])} for x in movies[:8]]
+    movies_out = [{"name": x["name"], "year": x["year"], "hours": round(x["secs"] / 3600, 1), "poster": None} for x in movies[:8]]
+    jobs = [(out, "poster", (lambda n=n, v=v: jellyfin_poster(client, cfg, img, "Series", v["id"], n, None))) for out, (n, v) in zip(series_out, top_series)]
+    jobs += [(out, "poster", (lambda x=x: jellyfin_poster(client, cfg, img, "Movie", x["id"], x["name"], x["year"]))) for out, x in zip(movies_out, movies)]
+    await covers.fill(jobs)
 
     best_day = max(per_day.items(), key=lambda kv: kv[1]) if per_day else None
     best_day_titles = []
@@ -271,7 +425,8 @@ async def collect_jellyfin(client, cfg: Config, start, end, img: Path) -> Dict[s
 
 # --- ListenBrainz ----------------------------------------------------------------------------------------------
 
-async def collect_music(client, cfg: Config, start, end, img: Path, tz) -> Dict[str, Any]:
+async def collect_music(client, cfg: Config, start, end, img: Path, tz, covers: Optional[Covers] = None) -> Dict[str, Any]:
+    covers = covers or Covers()
     user = quote(cfg.listenbrainz_user.strip(), safe="")
     headers = {"Authorization": "Token " + cfg.listenbrainz_token} if cfg.listenbrainz_token else {}
     lo, hi = int(start.timestamp()), int(end.timestamp())
@@ -289,7 +444,7 @@ async def collect_music(client, cfg: Config, start, end, img: Path, tz) -> Dict[
     artists: collections.Counter = collections.Counter()
     tracks: collections.Counter = collections.Counter()
     releases: collections.Counter = collections.Counter()
-    covers: Dict[tuple, str] = {}
+    release_of: Dict[tuple, str] = {}
     ms_total, days = 0, set()
     for x in listens:
         md = x["track_metadata"]
@@ -302,15 +457,38 @@ async def collect_music(client, cfg: Config, start, end, img: Path, tz) -> Dict[
         releases[(md.get("release_name") or "?", artist)] += 1
         rel = mp.get("caa_release_mbid") or mp.get("release_mbid") or ai.get("release_mbid")
         for key in (("t", md.get("track_name"), artist), ("a", artist), ("r", md.get("release_name"), artist)):
-            if rel and key not in covers:
-                covers[key] = rel
+            if rel and key not in release_of:
+                release_of[key] = rel
         days.add(dt.datetime.fromtimestamp(x["listened_at"], tz).date())
 
-    async def cover(key, name):
-        rel = covers.get(key)
+    async def caa(key, file_name):
+        rel = release_of.get(key)
         if not rel or not ID_RE.match(str(rel)):
             return None
-        return await save_image(client, f"{COVERART}/release/{rel}/front-250", img, f"mu-{slug(name)}")
+        return await save_image(client, f"{COVERART}/release/{rel}/front-250", img, file_name)
+
+    async def track_cover(title, artist):
+        """Cover Art Archive, else the cover of the matching song in Navidrome."""
+        file_name = f"mu-{slug(f'{title}-{artist}')}"
+        path = await caa(("t", title, artist), file_name)
+        if path or not cfg.soundtrack:
+            return path
+        try:
+            return await navi_song_cover(client, cfg, img, title, artist, file_name)
+        except COVER_ERRORS:
+            return None
+
+    async def artist_cover(artist):
+        """Navidrome (artist picture, then its most played album or song), last the Cover Art Archive release of the month."""
+        file_name = f"ar-{slug(artist)}"
+        if cfg.soundtrack:
+            try:
+                path = await navi_artist_cover(client, cfg, img, artist, file_name)
+            except COVER_ERRORS:
+                path = None
+            if path:
+                return path
+        return await caa(("a", artist), file_name)
 
     new_artists = []
     try:
@@ -322,11 +500,10 @@ async def collect_music(client, cfg: Config, start, end, img: Path, tz) -> Dict[
                 new_artists.append({"name": a, "plays": n})
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         pass
-    top_artists = []
-    for i, (a, n) in enumerate(artists.most_common(5)):
-        top_artists.append({"name": a, "plays": n, "cover": await cover(("a", a), a) if i == 0 else None})
-    top_tracks = [{"name": t, "artist": a, "plays": n, "cover": await cover(("t", t, a), f"{t}-{a}")}
-                  for (t, a), n in tracks.most_common(5)]
+    top_artists = [{"name": a, "plays": n, "cover": None} for a, n in artists.most_common(5)]
+    top_tracks = [{"name": t, "artist": a, "plays": n, "cover": None} for (t, a), n in tracks.most_common(5)]
+    await covers.fill([(x, "cover", (lambda x=x: track_cover(x["name"], x["artist"]))) for x in top_tracks]
+                      + [(x, "cover", (lambda x=x: artist_cover(x["name"]))) for x in top_artists])
     return {
         "new_artists": new_artists[:5],
         "days": sorted(d.isoformat() for d in days),
@@ -344,7 +521,8 @@ async def collect_music(client, cfg: Config, start, end, img: Path, tz) -> Dict[
 
 # --- Audiobookshelf --------------------------------------------------------------------------------------------
 
-async def collect_audiobookshelf(client, cfg: Config, start, end, img: Path, tz) -> Dict[str, Any]:
+async def collect_audiobookshelf(client, cfg: Config, start, end, img: Path, tz, covers: Optional[Covers] = None) -> Dict[str, Any]:
+    covers = covers or Covers()
     headers = {"Authorization": "Bearer " + cfg.abs_token}
     base = cfg.abs_url
     lo, hi = start.timestamp() * 1000, end.timestamp() * 1000
@@ -374,11 +552,17 @@ async def collect_audiobookshelf(client, cfg: Config, start, end, img: Path, tz)
     for item_id, b in top[:5]:
         if b["secs"] < 60:
             continue
-        cov = None
-        if len(out) < 3 and ID_RE.match(str(item_id)):
-            cov = await save_image(client, f"{base}/api/items/{item_id}/cover?width=400", img, f"ab-{slug(b['title'])}", headers)
         out.append({"title": b["title"], "author": b["author"], "hours": round(b["secs"] / 3600, 1),
-                    "finished": item_id in finished, "cover": cov})
+                    "finished": item_id in finished, "cover": None, "_id": item_id})
+
+    async def book_cover(item_id, title):
+        if not ID_RE.match(str(item_id)):
+            return None
+        return await save_image(client, f"{base}/api/items/{item_id}/cover?width=400", img, f"ab-{slug(title)}", headers)
+
+    await covers.fill([(x, "cover", (lambda x=x: book_cover(x["_id"], x["title"]))) for x in out])
+    for x in out:
+        x.pop("_id")
     total = sum(b["secs"] for b in books.values())
     return {"hours": round(total / 3600, 1), "minutes": round(total / 60), "books": out, "finished": len(finished),
             "days": sorted(days), "titles_count": len([b for b in books.values() if b["secs"] >= 60])}
@@ -391,7 +575,8 @@ def _safe_feed_url(url: Any) -> bool:
     return parsed.scheme in ("http", "https") and bool(parsed.hostname)
 
 
-async def collect_podcasts(client, cfg: Config, start, end, img: Path) -> Dict[str, Any]:
+async def collect_podcasts(client, cfg: Config, start, end, img: Path, covers: Optional[Covers] = None) -> Dict[str, Any]:
+    covers = covers or Covers()
     auth = base64.b64encode(f"{cfg.nextcloud_user}:{cfg.nextcloud_password}".encode()).decode()
     res = await get_json(client, f"{cfg.nextcloud_url}/index.php/apps/gpoddersync/episode_action",
                          headers={"Authorization": "Basic " + auth, "OCS-APIRequest": "true"},
@@ -428,8 +613,12 @@ async def collect_podcasts(client, cfg: Config, start, end, img: Path) -> Dict[s
                     title, image = head_title or title, head_image
             except (httpx.HTTPError, ET.ParseError, AttributeError, ValueError):
                 pass
-        cov = await save_image(client, image, img, f"pc-{slug(title)}") if image and _safe_feed_url(image) and not out else None
-        out.append({"title": title, "hours": round(p["secs"] / 3600, 1), "episodes": len(p["episodes"]), "cover": cov})
+        out.append({"title": title, "hours": round(p["secs"] / 3600, 1), "episodes": len(p["episodes"]), "cover": None,
+                    "_image": image})
+    await covers.fill([(x, "cover", (lambda x=x: save_image(client, x["_image"], img, f"pc-{slug(x['title'])}")))
+                       for x in out if x["_image"] and _safe_feed_url(x["_image"])])
+    for x in out:
+        x.pop("_image")
     total = sum(p["secs"] for p in pods.values())
     return {"connected": True, "hours": round(total / 3600, 1), "minutes": round(total / 60),
             "episodes": sum(len(p["episodes"]) for p in pods.values()), "podcasts": out}

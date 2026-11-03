@@ -21,6 +21,22 @@ A source whose server address is empty, or for which a person entered nothing, i
 
 The look follows a design engine with a **memory**: palette, background shape, type style, layout variant and text of every slide are chosen per person and month, and exclude what the person's previous months used, so no month looks like the last one. Special slides appear when something special happened (new record, finished series, new artists, a trip, a 7-day streak).
 
+## Covers
+
+Every item the story shows (series, films, top tracks, top artists, books, podcasts) gets a picture, found through a fallback chain that stops at the first hit. Nothing here can fail a build: a step that errors or finds nothing just hands over to the next one.
+
+| Item | Chain |
+|---|---|
+| Series, films | Jellyfin item image, then a Jellyfin library search by name (type, recursive, with the year if known), then Jellyfin's **remote search** (`POST /Items/RemoteSearch/Series` or `/Movie`, normally TMDb; the picture is downloaded from the image host, the Jellyfin key is never sent there). Needed because Maintainerr deletes watched media, so the item id from the play history may no longer exist. |
+| Top tracks | Cover Art Archive (release from ListenBrainz), then the matching Navidrome song (`search3`, title and artist, `getCoverArt`). |
+| Top artists | Navidrome artist (`search3`, `getArtistInfo2` image), then the cover of the artist's most played album or song in Navidrome, then the Cover Art Archive release of the month. |
+| Books | Audiobookshelf cover of every listed book. |
+| Podcasts | `itunes:image` or `image/url` of every listed feed (the channel head of very large feeds is read without parsing the whole XML). |
+
+Limits: lookups run four at a time, one lookup (with all its steps) gets 40 seconds, all lookups of a build together 3 minutes and at most 80 lookups; whatever is over a limit gets the placeholder. Downloads accept only http(s) addresses, real images (checked by content, and `image/*` if the server names a type) and at most 5 MB. The Navidrome steps need the Navidrome connection of the person; without it they are skipped.
+
+When nothing is found the story draws a **placeholder tile**: the initials of the item on a gradient made from the slide's own accent colours, pure CSS, no external resources. It never shows an empty grey box. Lists (series, books, podcasts, top artists) show small round thumbnails next to the entries. Palettes and layout variants do not depend on whether covers were found.
+
 ## Settings
 
 Admin (server-wide), all optional:
