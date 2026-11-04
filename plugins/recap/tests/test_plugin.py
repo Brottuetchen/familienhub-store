@@ -109,7 +109,8 @@ def test_loads_like_an_installed_plugin(tmp_path):
         plugin = installer.load_plugin(app, manifest, root)
         paths = sorted(p for p in app.openapi()["paths"] if p.startswith("/api/plugins/"))
         assert paths == ["/api/plugins/recap/build", "/api/plugins/recap/markdown/{{month}}",
-                         "/api/plugins/recap/months"], paths
+                         "/api/plugins/recap/months", "/api/plugins/recap/preview",
+                             "/api/plugins/recap/preview/story"], paths
         assert plugin.id == "recap" and plugin.has_personal_test and plugin.pages[0].id == "recaps"
         print("LOADED")
     """)
