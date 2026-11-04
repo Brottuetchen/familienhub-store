@@ -12,8 +12,11 @@ INDEX_PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Rückblicke</title>
 <style>body{margin:0;background:#14051f;color:#fff;font-family:system-ui,sans-serif;padding:48px 16px}
 main{max-width:520px;margin:0 auto}h1{font-size:2.6rem;font-weight:900;letter-spacing:-.04em;margin:0 0 24px}
-a{display:block;padding:18px 20px;margin-bottom:12px;border-radius:16px;background:linear-gradient(120deg,#5b2bff,#ff3cac);color:#fff;text-decoration:none}
-a b{display:block;font-size:1.4rem}a span{opacity:.9;font-size:.9rem}p{opacity:.85;line-height:1.5}</style></head>
+.card{position:relative;margin-bottom:12px}
+.card>a.go{display:block;padding:18px 20px;border-radius:16px;background:linear-gradient(120deg,#5b2bff,#ff3cac);color:#fff;text-decoration:none}
+.card>a.go b{display:block;font-size:1.4rem}.card>a.go span{opacity:.9;font-size:.9rem}
+.card>a.redo{position:absolute;right:14px;top:50%;transform:translateY(-50%);padding:8px 12px;border-radius:999px;
+background:rgba(0,0,0,.25);color:#fff;text-decoration:none;font-size:.8rem}p{opacity:.85;line-height:1.5}</style></head>
 <body><main><h1>Rückblicke</h1>{{CARDS}}</main></body></html>"""
 
 EMPTY_TEXT = ("Noch kein Rückblick da. Sobald du unter „Mehr → Meine Verbindungen“ mindestens einen Dienst "
@@ -35,9 +38,38 @@ def render_index(user_id: int) -> str:
         data = store.read_snapshot(user_id, month) or {}
         totals = data.get("totals") or {}
         photos = (data.get("photos") or {}).get("total") or 0
-        cards.append(f'<a href="{month}/"><b>{_e(month_label(month))}</b><span>{de_num(totals.get("media_hours") or 0)} h Medien · '
-                     f'{_e(photos)} Fotos</span></a>')
+        cards.append(f'<div class="card"><a class="go" href="{month}/"><b>{_e(month_label(month))}</b>'
+                     f'<span>{de_num(totals.get("media_hours") or 0)} h Medien · {_e(photos)} Fotos</span></a>'
+                     f'<a class="redo" href="{month}/neu" onclick="return confirm(\'{_e(month_label(month))} neu gestalten? '
+                     f'Das bisherige Design wird ersetzt.\')">✨ Neu gestalten</a></div>')
     return INDEX_PAGE.replace("{{CARDS}}", "".join(cards) or f"<p>{_e(EMPTY_TEXT)}</p>")
+
+
+REDESIGN_PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Neu gestalten</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#14051f;color:#fff;font-family:system-ui,sans-serif;padding:16px;text-align:center}
+.spin{width:56px;height:56px;margin:0 auto 24px;border-radius:50%;border:5px solid rgba(255,255,255,.2);border-top-color:#ff3cac;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}a{color:#fff}p{opacity:.85;line-height:1.5}</style></head>
+<body><main>{{BODY}}</main>{{SCRIPT}}</body></html>"""
+
+REDESIGN_TEXT = {
+    "started": "{label} bekommt ein neues Design … das dauert etwa eine Minute.",
+    "running": "{label} wird gerade neu gebaut … gleich geht es weiter.",
+    "busy": "Gerade entsteht ein anderer Rückblick. Versuch es in ein, zwei Minuten noch einmal.",
+    "no_sources": "Für einen Neubau ist unter „Mehr → Meine Verbindungen“ kein Dienst mehr verbunden.",
+}
+
+# Asks for the build state every two seconds and opens the month's story once it is done
+REDESIGN_POLL = """<script>(function(){const t=setInterval(()=>fetch('status',{cache:'no-store'}).then(r=>r.json())
+.then(d=>{if(!d.running){clearInterval(t);location.replace('./')}}).catch(()=>{}),2000)})()</script>"""
+
+
+def render_redesign(month: str, status: str) -> str:
+    waiting = status in ("started", "running")
+    text = _e(REDESIGN_TEXT.get(status, REDESIGN_TEXT["busy"]).format(label=month_label(month)))
+    body = (f'<div class="spin"></div><p>{text}</p>' if waiting
+            else f'<p>{text}</p><p><a href="../">Zurück zu den Rückblicken</a></p>')
+    return REDESIGN_PAGE.replace("{{BODY}}", body).replace("{{SCRIPT}}", REDESIGN_POLL if waiting else "")
 
 
 def render_obsidian(data: Dict[str, Any], url: str) -> str:

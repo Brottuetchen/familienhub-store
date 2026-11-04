@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import json
 import logging
+import re
 import secrets
 import time
 from typing import Any, Dict, List, Optional
@@ -45,6 +47,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = get_logger("plugin.recap")
+REDESIGN_PATH = re.compile(r"^(\d{4}-(?:0[1-9]|1[0-2]))/(neu|status)$")
 
 PLUGIN_ID = "recap"
 PAGE_ID = "recaps"
@@ -207,7 +210,7 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.2.3",
+            id=PLUGIN_ID, name="Recap", version="1.3.0",
             description="A monthly recap per person: series, music, audiobooks, podcasts, photos and games as a story.",
             capabilities=frozenset(),
             settings=(
@@ -286,6 +289,9 @@ class RecapPlugin(Plugin):
             return None
         if path in ("", "index.html"):
             return "text/html; charset=utf-8", views.render_index(user.id).encode("utf-8")
+        action = REDESIGN_PATH.match(path)
+        if action:
+            return self._redesign(user.id, *action.groups())
         hit = store.resolve(user.id, path)
         if hit is None:
             return None
@@ -300,6 +306,20 @@ class RecapPlugin(Plugin):
                 text = text.replace("<head>", f'<head><base href="{clean}/">', 1)
             return "text/html; charset=utf-8", text.encode("utf-8")
         return store.CONTENT_TYPES[kind], body
+
+    def _redesign(self, user_id: int, month: str, step: str):
+        """``<month>/neu`` rebuilds a month the person already has with a fresh design (a GET, but only reachable
+        through the person's own short-lived signed page link); ``<month>/status`` tells the waiting page when it is done."""
+        if store.read_snapshot(user_id, month) is None:
+            return None
+        if step == "status":
+            body = json.dumps({"running": build.is_running(user_id, month)})
+            return "application/json", body.encode("utf-8")
+        status = "running" if build.is_running(user_id, month) else "no_sources"
+        cfg = load_config(user_id)
+        if cfg.sources() and status != "running":
+            status = build.start(user_id, month, cfg, _tz(), redesign=True, on_done=announce, log=logger.warning)
+        return "text/html; charset=utf-8", views.render_redesign(month, status).encode("utf-8")
 
     # -- connection test ----------------------------------------------------------------------------------------
 
