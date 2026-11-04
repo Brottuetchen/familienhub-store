@@ -6,9 +6,10 @@ preview needs no files. The highlights come from the real ``story.highlights`` s
 import zlib
 from urllib.parse import quote
 
-from . import story
+from . import story, year as yearly
 
 MONTH = "2026-10"
+YEAR = 2026
 
 
 def svg(title, w, h, scene=False):
@@ -170,3 +171,76 @@ def sample_story_input(worst=False):
     data["highlights"] = story.highlights(data, history)
     data["design"] = {"lead": "trip"}
     return data, sample_prev(), history
+
+
+# -- The sample year (annual recap) --------------------------------------------------------------------------------------
+
+def sample_year_months():
+    """Twelve made-up monthly snapshots (only what the annual recap reads), with a few quiet months and one without data."""
+    hours = [64, 52, 78, 71, 58, 33, 41, 46, 91, 160, 118, 87]
+    out = {}
+    for n, h in enumerate(hours, 1):
+        if n == 6:
+            continue  # a month without a monthly recap: derived from the year's daily data
+        share = {"series_hours": .3, "movie_hours": .08, "music_hours": .22, "audiobook_hours": .15, "podcast_hours": .1, "games_hours": .15}
+        if n % 4 == 0:
+            share.update(music_hours=.45, series_hours=.1)
+        t = {k: round(h * v, 1) for k, v in share.items()}
+        t["media_hours"] = round(sum(t.values()), 1)
+        out[n] = {"month": f"2026-{n:02d}", "totals": t, "photos": {"total": 40 + n * 9},
+                  "games": {"games": [{"name": ["Hollow Lantern", "Pixel Farm Saga", "Turbo Kart 64"][n % 3], "minutes": 120 + n * 41, "sessions": n + 3}]}}
+    return out
+
+
+def _spread(total_by_month, fn):
+    """Daily values over the year: ``fn(month, day) -> value or None``."""
+    return {f"2026-{m:02d}-{d:02d}": v for m in range(1, 13) for d in range(1, 29) if (v := fn(m, d)) is not None}
+
+
+def sample_year(worst=False):
+    """``(data, snaps, earlier)`` for ``yearly.facts``/``yearly.render``: the sample month's lists at year scale, 12 photos (one per month),
+    some games with the estimated-time note. ``worst`` takes the month's limit sample as the base (long titles, big numbers)."""
+    d = worst_data() if worst else sample_data()
+    d.pop("month"), d.pop("highlights", None)
+    d["year"] = YEAR
+    jf, mu, ab, pc, ph, ga, ra = (d[k] for k in ("jellyfin", "music", "audiobooks", "podcasts", "photos", "games", "retroachievements"))
+    jf.update(series_hours=round(jf["series_hours"] * 9, 1), episodes=jf["episodes"] * 9, movie_hours=round(jf["movie_hours"] * 8, 1), movies_count=jf["movies_count"] * 8,
+              series_count=jf["series_count"] * 8, finished_series=jf["finished_series"],
+              best_day={"date": "2026-11-22", "hours": 11.6 if not worst else 21.9, "titles": jf["best_day"]["titles"]},
+              days=_spread(None, lambda m, dd: round(.5 + (m * dd) % 5 * .6, 1) if (m + dd) % 3 else None))
+    jf["active_days"] = len(jf["days"])
+    for x in jf["series"]:
+        x.update(episodes=x["episodes"] * 6, hours=round(x["hours"] * 6, 1))
+    for i, x in enumerate(jf["movies"]):
+        x["hours"] = round(2.4 - i * .2, 1)
+    mu.update(plays=mu["plays"] * 9, minutes=mu["minutes"] * 9, artists_count=mu["artists_count"] * 5, tracks_count=640,
+              day_minutes=_spread(None, lambda m, dd: float(20 + (m * 7 + dd * 3) % 70) if dd % 2 else None))
+    for x in mu["top_artists"] + mu["top_tracks"]:
+        x["plays"] *= 8
+    ab.update(hours=round(ab["hours"] * 7, 1), minutes=ab["minutes"] * 7, finished=9, titles_count=22, day_minutes=_spread(None, lambda m, dd: 35.0 if dd in (3, 4, 5, 17) else None))
+    pc.update(hours=round(pc["hours"] * 8, 1), minutes=pc["minutes"] * 8, episodes=pc["episodes"] * 8, day_minutes=_spread(None, lambda m, dd: 28.0 if dd in (9, 10) else None))
+    ph.update(total=ph["total"] * (9 if not worst else 3), photos=ph["photos"] * 9, videos=ph["videos"] * 9, days_with_photos=140)
+    cities = ["Musterstadt", "Lissabon", "Sintra", "Cascais", "Hamburg", "Wien", "Berlin", "Rom", "Nizza", "Oslo", "Prag", "Bremen"]
+    ph["highlights"] = [{"img": photo(f"Foto {i}"), "date": f"2026-{i:02d}-{(i * 5) % 27 + 1:02d}",
+                         "city": long_name(i) if worst else cities[i - 1]} for i in range(1, 13)]
+    ph["month_counts"] = {f"{n:02d}": 40 + n * 9 for n in range(1, 13)}
+    ga.update(hours=round(ga["hours"] * 6, 1), minutes=ga["minutes"] * 6, games_count=ga["games_count"] * 5, approx=True, approx_since="2026-11-03")
+    for x in ga["games"]:
+        x["minutes"] *= 6
+    ra.update(total=ra["total"] * 8, points=ra["points"] * 8, hardcore=ra["hardcore"] * 8, games_count=ra["games_count"] * 4)
+    for x in ra["games"]:
+        x["count"] *= 6
+    t = d["totals"]
+    for k in list(t):
+        t[k] = round(t[k] * 7, 1)
+    snaps = sample_year_months()
+    earlier = [{"month": "2025-12", "jellyfin": {"series": [{"name": jf["series"][1]["name"]}, {"name": "Eine alte Serie"}]},
+                "photos": {"place_geo": [{"name": "Musterstadt", "lat": 50.11, "lon": 8.68, "country": "Deutschland", "count": 900}]}}]
+    return yearly.facts(d, snaps, earlier), snaps
+
+
+def sample_year_input(worst=False):
+    """``data`` for ``yearly.render`` with the sample design's lead-free parts filled; the caller adds ``design``."""
+    data, _ = sample_year(worst)
+    data["design"] = {}
+    return data

@@ -5,6 +5,8 @@ What it does:
 - Every month (scheduled job) it builds, for each person who connected at least one source in *More -> My
   connections*, a story page about the previous month: Jellyfin viewing (Playback Reporting), ListenBrainz music,
   Audiobookshelf, podcasts (Nextcloud GPodder Sync), Immich photos and games (ES-DE play statistics, Steam library), with a soundtrack from Navidrome.
+- On 1 January it also builds the annual recap ("Jahresrückblick") of the year that just ended, from the same sources over the
+  whole year; ``POST .../build?year=YYYY`` builds a finished year on demand. It lives next to the months (``2026/``, ``2026.json``).
 - The story is a page of the plugin (``pages``): the app opens it through a signed, short-lived link. Posters,
   photos, covers and audio clips are downloaded at build time, so the story loads nothing from other servers.
 - ``POST /api/plugins/recap/build`` builds a month on demand, ``GET /api/plugins/recap/months`` lists the months,
@@ -47,7 +49,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = get_logger("plugin.recap")
-REDESIGN_PATH = re.compile(r"^(\d{4}-(?:0[1-9]|1[0-2]))/(neu|status)$")
+REDESIGN_PATH = re.compile(r"^(\d{4}-(?:0[1-9]|1[0-2])|20\d\d)/(neu|status)$")  # a month or a year
 # Design preview as a page: "preview/" is the gallery, "preview/g~palette~shape~type~offset~variants" and "preview/s~..." (the story) keep the choices in the path
 PREVIEW_PATH = re.compile(r"^preview(?:/(?:([gs])~([a-z]+)~([a-z]+)~([a-z]+)~(\d)~([a-z0-9.]*)))?/?$")
 
@@ -131,6 +133,17 @@ def last_month() -> str:
     return build.prev_month(dt.datetime.now(_tz()).strftime("%Y-%m"))
 
 
+def last_year() -> Optional[str]:
+    """The year that just ended while we are still in January (the window for the automatic annual build), else None."""
+    now = dt.datetime.now(_tz())
+    return str(now.year - 1) if now.month == 1 else None
+
+
+def current_year() -> int:
+    """Years before this one are finished."""
+    return dt.datetime.now(_tz()).year
+
+
 def route_for(month: str) -> str:
     return f"/plugin-page/{PLUGIN_ID}/{PAGE_ID}?path={month}/"
 
@@ -141,11 +154,11 @@ async def announce(user_id: int, month: str, data: Dict[str, Any]) -> None:
     """Tells the person their recap is ready, once per person and month (the snapshot remembers it)."""
     if notify is None or data.get("notified"):
         return
-    year, number = map(int, month.split("-"))
     totals, jf = data.get("totals") or {}, data.get("jellyfin") or {}
     top = jf["series"][0]["name"] if jf.get("series") else None
     body = f"{de_num(totals.get('media_hours', 0))} Stunden Medien" + (f", ganz vorne: {top}" if top else "") + "."
-    result = await notify(PLUGIN_ID, user_ids=[user_id], title=f"Dein {MONTHS[number - 1]}-Rückblick ist da",
+    title = f"Dein Jahresrückblick {month} ist da" if store.is_year(month) else f"Dein {MONTHS[int(month[5:]) - 1]}-Rückblick ist da"
+    result = await notify(PLUGIN_ID, user_ids=[user_id], title=title,
                           body=body, data={"route": route_for(month)})
     if result.get("sent") or result.get("reason") in ("no_recipients", "invalid"):
         fresh = store.read_snapshot(user_id, month) or data
@@ -161,13 +174,28 @@ def _valid_month(month: str) -> str:
     return month
 
 
+def _valid_year(year: str) -> str:
+    if not store.YEAR_RE.match(str(year or "")):
+        raise HTTPException(422, "Invalid year, expected YYYY")
+    return str(year)
+
+
 @router.post("/build")
 async def build_endpoint(month: Optional[str] = Query(default=None), force: bool = Query(default=False),
-                         redesign: bool = Query(default=False), user=Depends(get_current_user)):
-    """Builds the logged-in person's recap (previous month, or ``?month=YYYY-MM``) in the background.
-    ``redesign`` rebuilds an existing month with a fresh design instead of keeping the stored one."""
-    target = _valid_month(month) if month else last_month()
-    if target > last_month():
+                         redesign: bool = Query(default=False), year: Optional[str] = Query(default=None),
+                         user=Depends(get_current_user)):
+    """Builds the logged-in person's recap (previous month, or ``?month=YYYY-MM``) in the background, or with
+    ``?year=YYYY`` the annual recap of a finished year. ``redesign`` rebuilds an existing one with a fresh design
+    instead of keeping the stored one."""
+    if year is not None and month is not None:
+        raise HTTPException(422, "Give either a month or a year")
+    if year is not None:
+        target = _valid_year(year)
+        if int(target) >= current_year():
+            raise HTTPException(422, "Only finished years can be built")
+    else:
+        target = _valid_month(month) if month else last_month()
+    if year is None and target > last_month():
         raise HTTPException(422, "Only finished months can be built")
     if store.read_snapshot(user.id, target) is not None and not (force or redesign):
         return {"status": "exists", "month": target, "route": route_for(target)}
@@ -187,17 +215,26 @@ async def months_endpoint(user=Depends(get_current_user)):
                       "media_hours": (data.get("totals") or {}).get("media_hours", 0),
                       "photos": (data.get("photos") or {}).get("total", 0),
                       "failed_sources": sorted((data.get("errors") or {}).keys())})
+    years = []
+    for year in store.list_years(user.id):
+        data = store.read_snapshot(user.id, year) or {}
+        years.append({"year": year, "label": views.year_label(year), "route": route_for(year),
+                      "media_hours": (data.get("totals") or {}).get("media_hours", 0),
+                      "photos": (data.get("photos") or {}).get("total", 0),
+                      "failed_sources": sorted((data.get("errors") or {}).keys())})
     building = [m for (uid, m) in list(build._running) if uid == user.id and build.is_running(uid, m)]
-    return {"items": items, "building": building}
+    return {"items": items, "years": years, "building": building}
 
 
 @router.get("/markdown/{month}", response_class=PlainTextResponse)
 async def markdown_endpoint(month: str, user=Depends(get_current_user)):
-    """The Obsidian note of a month (for an external agent with an access key)."""
-    data = store.read_snapshot(user.id, _valid_month(month))
+    """The Obsidian note of a month, or of a year (``/markdown/2026``), for an external agent with an access key."""
+    year = store.is_year(month)
+    data = store.read_snapshot(user.id, _valid_year(month) if year else _valid_month(month))
     if not data or data.get("empty") or not store.has_story(user.id, month):
-        raise HTTPException(404, "No recap for this month")
-    return PlainTextResponse(views.render_obsidian(data, route_for(month)), media_type="text/markdown; charset=utf-8")
+        raise HTTPException(404, "No recap for this period")
+    text = views.render_obsidian_year(data, route_for(month)) if year else views.render_obsidian(data, route_for(month))
+    return PlainTextResponse(text, media_type="text/markdown; charset=utf-8")
 
 
 # --- design preview ----------------------------------------------------------------------------------------------
@@ -252,7 +289,7 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.6.2",
+            id=PLUGIN_ID, name="Recap", version="1.7.0",
             description="A monthly recap per person: series, music, audiobooks, podcasts, photos and games as a story.",
             capabilities=frozenset(),
             settings=(
@@ -312,10 +349,12 @@ class RecapPlugin(Plugin):
                 pass
         for uid in ids:  # the daily Steam snapshot (one request per person, only until it worked)
             await build.snapshot_steam(uid, load_config(uid), _tz())
+        year = last_year()  # the annual recap is built in January only, for the year that just ended
         for uid in ids:  # a notification that did not go out yet (rate limit, restart in between)
-            data = store.read_snapshot(uid, month)
-            if data and not data.get("notified") and not data.get("empty") and store.has_story(uid, month):
-                await announce(uid, month, data)
+            for period in (month, year):
+                data = store.read_snapshot(uid, period) if period else None
+                if data and not data.get("notified") and not data.get("empty") and store.has_story(uid, period):
+                    await announce(uid, period, data)
         if build.busy():
             return
         for uid in ids:
@@ -328,7 +367,31 @@ class RecapPlugin(Plugin):
             if not cfg.sources():
                 continue
             if build.start(uid, month, cfg, _tz(), on_done=announce, log=logger.warning) == "started":
-                break  # one person per run; the next run takes the next one
+                return  # one person per run; the next run takes the next one
+        if year:
+            self._schedule_year(ids, year, month)
+
+    def _schedule_year(self, ids, year: str, december: str) -> None:
+        """Starts at most one annual build per run, once per person (the snapshot marks it as done, failed attempts are
+        paced like the months'). The year waits for December's monthly recap so its curve can use the snapshot, unless
+        that one has given up."""
+        if build.busy():
+            return
+        for uid in ids:
+            if store.read_snapshot(uid, year) is not None:
+                continue
+            if store.read_snapshot(uid, december) is None and store.attempts(uid, december)["count"] < build.MAX_ATTEMPTS:
+                cfg = load_config(uid)
+                if cfg.sources():
+                    continue
+            attempts = store.attempts(uid, year)
+            if attempts["count"] >= build.MAX_ATTEMPTS or time.time() - attempts["last"] < build.RETRY_AFTER:
+                continue
+            cfg = load_config(uid)
+            if not cfg.sources():
+                continue
+            if build.start(uid, year, cfg, _tz(), on_done=announce, log=logger.warning) == "started":
+                return
 
     # -- pages --------------------------------------------------------------------------------------------------
 
@@ -364,7 +427,7 @@ class RecapPlugin(Plugin):
             return "text/html; charset=utf-8", text.encode("utf-8")
         return store.CONTENT_TYPES[kind], body
 
-    def _redesign(self, user_id: int, month: str, step: str):
+    def _redesign(self, user_id: int, month: str, step: str):  # ``month`` may also be a year
         """``<month>/neu`` rebuilds a month the person already has with a fresh design (a GET, but only reachable
         through the person's own short-lived signed page link); ``<month>/status`` tells the waiting page when it is done."""
         if store.read_snapshot(user_id, month) is None:

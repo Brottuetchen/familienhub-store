@@ -13,7 +13,7 @@ import shutil
 from typing import Any, Awaitable, Callable, Dict, Optional, Set, Tuple
 
 
-from . import collectors, store, story
+from . import collectors, store, story, year as yearly
 
 BUILD_TIMEOUT = 15 * 60  # seconds for one whole build
 MAX_ATTEMPTS = 3
@@ -32,6 +32,10 @@ def prev_month(month: str) -> str:
 def month_bounds(month: str, tz) -> Tuple[dt.datetime, dt.datetime]:
     y, m = map(int, month.split("-"))
     return dt.datetime(y, m, 1, tzinfo=tz), dt.datetime(y + (m == 12), m % 12 + 1, 1, tzinfo=tz)
+
+
+def year_bounds(year: int, tz) -> Tuple[dt.datetime, dt.datetime]:
+    return dt.datetime(year, 1, 1, tzinfo=tz), dt.datetime(year + 1, 1, 1, tzinfo=tz)
 
 
 def compute_totals(data: Dict[str, Any]) -> Dict[str, float]:
@@ -88,6 +92,17 @@ def steam_states(user_id: int, start, end):
     return base, final, dt.datetime.fromisoformat(later[0]).replace(tzinfo=start.tzinfo)
 
 
+def year_firsts(user_id: int, start, end) -> Dict[str, Any]:
+    """The earliest game and Steam snapshots *inside* [start, end) and the day of the earlier one: what the annual recap
+    counts from when there is no snapshot from before the year (they only began during it)."""
+    first, last = start.date().isoformat(), end.date().isoformat()
+    games = [d for d in store.game_days(user_id) if first <= d < last]
+    steam = [d for d in store.steam_days(user_id) if first <= d < last]
+    return {"first": store.read_games(user_id, games[0]) if games else None,
+            "steam_first": store.read_steam(user_id, steam[0]) if steam else None,
+            "since": min(games[:1] + steam[:1]) if games or steam else None}
+
+
 async def snapshot_steam(user_id: int, cfg: collectors.Config, tz) -> bool:
     """Writes today's Steam snapshot unless there is one already: one API request per local day and person while it
     works, a failed request is tried again on the next run. Silent like ``snapshot_games`` (the error would only say
@@ -106,6 +121,43 @@ async def snapshot_steam(user_id: int, cfg: collectors.Config, tz) -> bool:
         return False
 
 
+async def _collect(user_id: int, cfg: collectors.Config, start, end, tz, img, data: Dict[str, Any], *, year: bool = False) -> None:
+    """Runs every source the person connected over [start, end) into ``data`` (a failing source is noted in ``data["errors"]``
+    and leaves an empty entry), then totals and soundtrack. ``year``: the annual variant (more history pages, daily minutes,
+    one photo per month, games counted from the snapshots inside the year)."""
+    covers = collectors.Covers()  # one time budget and one cap for all cover lookups of this build
+    async with collectors.new_client() as client:
+        steps: Dict[str, Callable[[], Awaitable[Any]]] = {
+            "jellyfin": lambda: collectors.collect_jellyfin(client, cfg, start, end, img, covers),
+            "music": lambda: collectors.collect_music(client, cfg, start, end, img, tz, covers,
+                                                      **({"max_pages": 600, "daily": True} if year else {})),
+            "audiobooks": lambda: collectors.collect_audiobookshelf(client, cfg, start, end, img, tz, covers, **({"daily": True} if year else {})),
+            "podcasts": lambda: collectors.collect_podcasts(client, cfg, start, end, img, covers, **({"tz": tz, "daily": True} if year else {})),
+            "photos": lambda: collectors.collect_immich(client, cfg, start, end, img, **({"per_month": True, "max_pages": 300} if year else {})),
+            "games": lambda: collectors.collect_games(client, cfg, start, end, img, *game_states(user_id, start, end), covers,
+                                                      steam_states(user_id, start, end), data["errors"],
+                                                      **({"year": year_firsts(user_id, start, end)} if year else {})),
+            "retroachievements": lambda: collectors.collect_retroachievements(client, cfg, start, end, img, covers),
+        }
+        wanted = cfg.sources()
+        await snapshot_steam(user_id, cfg, tz)  # a build on demand also keeps today's state (no-op if taken)
+        for key, step in steps.items():
+            if key not in wanted:
+                data[key] = {}
+                continue
+            try:
+                data[key] = await step()
+            except Exception as exc:  # noqa: BLE001 - a broken source must not stop the recap
+                data[key] = {}
+                data["errors"][key] = collectors.describe_error(exc)
+        data["totals"] = compute_totals(data)
+        data["soundtrack"] = []
+        try:
+            data["soundtrack"] = await collectors.collect_soundtrack(client, cfg, data["music"], img)
+        except Exception as exc:  # noqa: BLE001
+            data["errors"]["soundtrack"] = collectors.describe_error(exc)
+
+
 async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, redesign: bool = False) -> Dict[str, Any]:
     """Collects, designs and writes one month. Raises ``BuildFailed`` when nothing could be collected and a source failed.
     The story and its files are assembled in a temporary folder and moved into place at the end, the snapshot
@@ -119,35 +171,7 @@ async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, r
     data: Dict[str, Any] = {"month": month, "generated": dt.datetime.now(tz).isoformat(timespec="seconds"),
                             "seed": str(user_id), "errors": {}}
     try:
-        covers = collectors.Covers()  # one time budget and one cap for all cover lookups of this build
-        async with collectors.new_client() as client:
-            steps: Dict[str, Callable[[], Awaitable[Any]]] = {
-                "jellyfin": lambda: collectors.collect_jellyfin(client, cfg, start, end, img, covers),
-                "music": lambda: collectors.collect_music(client, cfg, start, end, img, tz, covers),
-                "audiobooks": lambda: collectors.collect_audiobookshelf(client, cfg, start, end, img, tz, covers),
-                "podcasts": lambda: collectors.collect_podcasts(client, cfg, start, end, img, covers),
-                "photos": lambda: collectors.collect_immich(client, cfg, start, end, img),
-                "games": lambda: collectors.collect_games(client, cfg, start, end, img, *game_states(user_id, start, end), covers,
-                                                          steam_states(user_id, start, end), data["errors"]),
-                "retroachievements": lambda: collectors.collect_retroachievements(client, cfg, start, end, img, covers),
-            }
-            wanted = cfg.sources()
-            await snapshot_steam(user_id, cfg, tz)  # a build on demand also keeps today's state (no-op if taken)
-            for key, step in steps.items():
-                if key not in wanted:
-                    data[key] = {}
-                    continue
-                try:
-                    data[key] = await step()
-                except Exception as exc:  # noqa: BLE001 - a broken source must not stop the recap
-                    data[key] = {}
-                    data["errors"][key] = collectors.describe_error(exc)
-            data["totals"] = compute_totals(data)
-            data["soundtrack"] = []
-            try:
-                data["soundtrack"] = await collectors.collect_soundtrack(client, cfg, data["music"], img)
-            except Exception as exc:  # noqa: BLE001
-                data["errors"]["soundtrack"] = collectors.describe_error(exc)
+        await _collect(user_id, cfg, start, end, tz, img, data)
 
         got_data = bool(data["totals"]["media_hours"] or (data["photos"] or {}).get("total")
                         or (data["retroachievements"] or {}).get("total"))
@@ -189,6 +213,64 @@ async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, r
         shutil.rmtree(work, ignore_errors=True)
 
 
+async def build_year(user_id: int, year: str, cfg: collectors.Config, tz, *, redesign: bool = False) -> Dict[str, Any]:
+    """Collects, designs and writes the annual recap of a finished year (``"2026"``), next to the months: ``2026/index.html``
+    and ``2026.json``. The collectors run over the whole year; what only a year can show (hours per month from the monthly
+    snapshots, records, discoveries) comes from ``yearly.facts``. Same rules as ``build_month``: assembled in a temporary
+    folder, the snapshot is written last."""
+    start, end = year_bounds(int(year), tz)
+    root = store.user_dir(user_id)
+    work = root / f".build-{year}"
+    shutil.rmtree(work, ignore_errors=True)
+    img = work / "img"
+    img.mkdir(parents=True, exist_ok=True)
+    data: Dict[str, Any] = {"year": int(year), "generated": dt.datetime.now(tz).isoformat(timespec="seconds"),
+                            "seed": str(user_id), "errors": {}}
+    try:
+        await _collect(user_id, cfg, start, end, tz, img, data, year=True)
+        got_data = bool(data["totals"]["media_hours"] or (data["photos"] or {}).get("total")
+                        or (data["retroachievements"] or {}).get("total"))
+        if not got_data and data["errors"]:
+            raise BuildFailed("nothing collected and a source failed")
+        old = store.read_snapshot(user_id, year) or {}
+        if not got_data:
+            data["empty"] = True
+            data["notified"] = True
+            store.write_snapshot(user_id, year, data)
+            return data
+        snaps = {}
+        for number in range(1, 13):
+            snap = store.read_snapshot(user_id, f"{year}-{number:02d}")
+            if snap and not snap.get("empty"):
+                snaps[number] = snap
+        yearly.facts(data, snaps, store.history(user_id, f"{year}-01") + store.year_history(user_id, year))
+        years = store.year_history(user_id, year)
+        if old.get("design") and not redesign:
+            data["design"] = old["design"]
+        else:
+            data["design_round"] = int(old.get("design_round") or 0) + (1 if old.get("design") else 0)
+            data["design"] = yearly.choose_design(data, years, current=old.get("design") if redesign else None)
+        data["notified"] = bool(old.get("notified"))
+        data.setdefault("design_round", int(old.get("design_round") or 0))
+        (work / "index.html").write_text(yearly.render(data), encoding="utf-8")
+        _swap(root, work, store.month_dir(user_id, year), year)
+        store.write_snapshot(user_id, year, data)
+        store.clear_attempts(user_id, year)
+        return data
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def _swap(root, work, target, label: str) -> None:
+    """Moves the finished folder into place, the old one out of the way first."""
+    trash = root / f".old-{label}"
+    shutil.rmtree(trash, ignore_errors=True)
+    if target.exists():
+        target.rename(trash)
+    work.rename(target)
+    shutil.rmtree(trash, ignore_errors=True)
+
+
 # --- background jobs -------------------------------------------------------------------------------------------
 
 _running: Dict[Tuple[int, str], "asyncio.Task[Any]"] = {}
@@ -227,7 +309,8 @@ def start(user_id: int, month: str, cfg: collectors.Config, tz, *, redesign: boo
 
     async def job() -> None:
         try:
-            data = await asyncio.wait_for(build_month(user_id, month, cfg, tz, redesign=redesign), BUILD_TIMEOUT)
+            builder = build_year if store.is_year(month) else build_month  # ``month`` may also be a year ("2026")
+            data = await asyncio.wait_for(builder(user_id, month, cfg, tz, redesign=redesign), BUILD_TIMEOUT)
             if on_done is not None and not data.get("empty"):
                 await on_done(user_id, month, data)
         except asyncio.CancelledError:  # pragma: no cover - shutdown
@@ -249,4 +332,4 @@ def start(user_id: int, month: str, cfg: collectors.Config, tz, *, redesign: boo
     return "started"
 
 
-__all__ = ["BuildFailed", "build_month", "snapshot_games", "snapshot_steam", "game_states", "steam_states", "start", "busy", "is_running", "prev_month", "month_bounds"]
+__all__ = ["BuildFailed", "build_month", "build_year", "year_bounds", "year_firsts", "snapshot_games", "snapshot_steam", "game_states", "steam_states", "start", "busy", "is_running", "prev_month", "month_bounds"]

@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from fh_plugin_recap import gallery, story
+from fh_plugin_recap import gallery, story, year as yearly
 
 sync_api = pytest.importorskip("playwright.sync_api")
 
@@ -69,6 +69,11 @@ def story_page(type_, n, worst):
     return gallery.sample_story("neon", "blobs", type_, 0, sel)
 
 
+def year_page(type_, n, worst, palette="silvester"):
+    sel = {**{k: min(n, c - 1) for k, c in yearly.YEAR_VARIANTS.items()}, "year": 1, "worst": int(worst)}
+    return gallery.sample_story(palette, "blobs", type_, 0, sel)
+
+
 def measure_story(page, html, size):
     page.set_viewport_size({"width": size[0], "height": size[1]})
     page.set_content(html)
@@ -112,6 +117,35 @@ def test_no_gallery_frame_overflows(page, type_, worst):
         page.set_content(gallery.frame_page(section, "neon", "blobs", type_, 0))
         settle(page)
         bad += problems(page.evaluate(MEASURE), MIN_FIT_WORST if worst else MIN_FIT_NORMAL, f"{type_} frame")
+    assert not bad, "\n".join(bad[:25])
+
+
+@pytest.mark.parametrize("worst", [False, True], ids=["normal", "worst"])
+@pytest.mark.parametrize("type_", story.TYPES)
+def test_no_year_slide_overflows_in_the_story(page, type_, worst):
+    """The annual recap's slides (every variant, the top 5 once per area) obey the same no-scroll rules as the months."""
+    bad, fits = [], []
+    for n in range(max(yearly.YEAR_VARIANTS.values())):
+        html = year_page(type_, n, worst, ("silvester", "konfetti", "goldregen")[n])
+        for size in VIEWPORTS:
+            rows = measure_story(page, html, size)
+            assert len(rows) >= 14 and {"ytop", "yphotos", "yfocus", "youtro"} <= {r["key"] for r in rows}
+            bad += problems(rows, MIN_FIT_WORST if worst else MIN_FIT_NORMAL, f"year {type_} n{n} {size[0]}x{size[1]}")
+            fits += [r["fit"] for r in rows]
+    assert not bad, "\n".join(bad[:25])
+    print(f"min fit year {type_} {'worst' if worst else 'normal'}: {min(fits):.2f}")
+
+
+@pytest.mark.parametrize("worst", [False, True], ids=["normal", "worst"])
+def test_no_year_gallery_frame_overflows(page, worst):
+    page.set_viewport_size({"width": gallery.FRAME_W, "height": gallery.FRAME_H})
+    bad = []
+    secs = gallery.sections("goldregen", "blobs", "bold", 0, worst, year=True)
+    assert {k for k, _ in secs} == set(yearly.YEAR_VARIANTS)
+    for (key, v), section in secs.items():
+        page.set_content(gallery.frame_page(section, "goldregen", "blobs", "bold", 0, year=True))
+        settle(page)
+        bad += problems(page.evaluate(MEASURE), MIN_FIT_WORST if worst else MIN_FIT_NORMAL, "year frame")
     assert not bad, "\n".join(bad[:25])
 
 

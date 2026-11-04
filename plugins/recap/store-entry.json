@@ -6,8 +6,8 @@
     "en": "Recap"
   },
   "summary": {
-    "de": "Monatsrückblick pro Person als Story: Serien, Musik, Hörbücher, Podcasts, Fotos und Spiele.",
-    "en": "A monthly recap per person as a story: series, music, audiobooks, podcasts, photos and games."
+    "de": "Monats- und Jahresrückblick pro Person als Story: Serien, Musik, Hörbücher, Podcasts, Fotos und Spiele.",
+    "en": "A monthly and annual recap per person as a story: series, music, audiobooks, podcasts, photos and games."
   },
   "description": {
     "de": "Baut am Monatsanfang für jede Person einen Rückblick als Story mit Zahlen, Postern, Fotos und Musikausschnitten. Quellen: Jellyfin (Playback Reporting), ListenBrainz, Audiobookshelf, Nextcloud GPodder Sync, Immich, ES-DE-Spielstatistiken, Steam, RetroAchievements und Navidrome (Soundtrack). Jede Person verbindet ihre eigenen Konten; der Admin trägt nur die Serveradressen ein. Alles wird beim Bauen auf dem Hub gespeichert, die Story lädt nichts von fremden Servern. Benachrichtigung, wenn der Rückblick fertig ist. Benötigt einen Hub mit persönlichen Plugin-Einstellungen und Plugin-Seiten.",
@@ -17,7 +17,7 @@
   "repo": "https://github.com/Brottuetchen/familienhub-store",
   "path": "plugins/recap",
   "sha": "TBD",
-  "version": "1.6.2",
+  "version": "1.7.0",
   "screenshots": [],
   "tags": [
     "recap",

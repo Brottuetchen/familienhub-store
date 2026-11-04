@@ -7,6 +7,7 @@ Layout below the hub's data directory (no database tables)::
         2026-10.attempts.json   failed build attempts (removed after a success)
         2026-10/index.html      the story
         2026-10/img/*.jpg|png|webp|mp3   posters, photos, covers, soundtrack clips
+        2026.json, 2026/        the same for a whole year (annual recap), next to the months
         games/2026-10-31.json   daily state of the game statistics (cumulative play time per device and game)
         steam/2026-10-31.json   daily state of the Steam library (cumulative play time per app id)
 
@@ -25,6 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 DAY_RE = re.compile(r"^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
 MONTH_RE = re.compile(r"^(20\d\d)-(0[1-9]|1[0-2])$")
+YEAR_RE = re.compile(r"^20\d\d$")
 ASSET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.(jpg|png|webp|mp3)$")
 CONTENT_TYPES = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp", "mp3": "audio/mpeg"}
 MAX_ASSET_BYTES = 12 * 1024 * 1024
@@ -40,14 +42,19 @@ def user_dir(user_id: int) -> Path:
     return base_dir() / str(int(user_id))
 
 
+def is_year(period: str) -> bool:
+    return bool(YEAR_RE.match(period or ""))
+
+
 def month_dir(user_id: int, month: str) -> Path:
-    if not MONTH_RE.match(month):
+    """The folder of a month (``2026-10``) or of a year (``2026``)."""
+    if not (MONTH_RE.match(month) or YEAR_RE.match(month)):
         raise ValueError("bad month")
     return user_dir(user_id) / month
 
 
 def snapshot_path(user_id: int, month: str) -> Path:
-    if not MONTH_RE.match(month):
+    if not (MONTH_RE.match(month) or YEAR_RE.match(month)):
         raise ValueError("bad month")
     return user_dir(user_id) / f"{month}.json"
 
@@ -99,6 +106,30 @@ def list_months(user_id: int) -> List[str]:
         if name.endswith(".json") and MONTH_RE.match(name[:-5]) and has_story(user_id, name[:-5]):
             found.append(name[:-5])
     return sorted(found, reverse=True)
+
+
+def list_years(user_id: int) -> List[str]:
+    """Years with a finished annual story, newest first."""
+    found = []
+    try:
+        names = os.listdir(user_dir(user_id))
+    except OSError:
+        return []
+    for name in names:
+        if name.endswith(".json") and YEAR_RE.match(name[:-5]) and has_story(user_id, name[:-5]):
+            found.append(name[:-5])
+    return sorted(found, reverse=True)
+
+
+def year_history(user_id: int, before: str) -> List[Dict[str, Any]]:
+    """The person's earlier annual snapshots (oldest first): the design memory of the annual recap."""
+    out = []
+    for year in sorted(list_years(user_id)):
+        if year < before:
+            snap = read_json(snapshot_path(user_id, year))
+            if snap and str(snap.get("year")) == year and not snap.get("empty"):
+                out.append(snap)
+    return out
 
 
 def history(user_id: int, before: str) -> List[Dict[str, Any]]:
@@ -191,14 +222,14 @@ def clear_attempts(user_id: int, month: str) -> None:
 def resolve(user_id: int, path: str) -> Optional[Tuple[str, Path]]:
     """Maps a page path to ``(kind, file)`` below the person's own folder, or ``None``.
 
-    Accepted: ``2026-10``, ``2026-10/``, ``2026-10/index.html`` (the story) and ``2026-10/img/<name>.<ext>``
+    Accepted: ``2026-10`` or ``2026`` (a year), with ``/``, ``2026-10/index.html`` (the story) and ``2026-10/img/<name>.<ext>``
     (an asset). ``kind`` is ``"story"`` or the file extension of the asset. The result is always a regular file
     (no symlink) whose real path lies inside the person's folder.
     """
     parts = path.split("/")
     if parts and parts[-1] == "" and len(parts) > 1:
         parts = parts[:-1]
-    if not parts or not MONTH_RE.match(parts[0]):
+    if not parts or not (MONTH_RE.match(parts[0]) or YEAR_RE.match(parts[0])):
         return None
     month = parts[0]
     if len(parts) == 1 or (len(parts) == 2 and parts[1] == "index.html"):

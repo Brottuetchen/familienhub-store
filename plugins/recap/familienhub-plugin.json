@@ -4,10 +4,10 @@
     "de": "Rückblick",
     "en": "Recap"
   },
-  "version": "1.6.2",
+  "version": "1.7.0",
   "description": {
-    "de": "Ein Monatsrückblick pro Person als Story (wie bei Musikdiensten zum Jahresende): Serien und Filme aus Jellyfin, Musik aus ListenBrainz, Hörbücher aus Audiobookshelf, Podcasts über Nextcloud, Fotos aus Immich, Spielzeiten aus ES-DE und Steam, Cover aus RomM und Steam und Erfolge aus RetroAchievements, dazu Ausschnitte aus Navidrome als Soundtrack. Jede Person verbindet ihre eigenen Konten unter „Meine Verbindungen“.",
-    "en": "A monthly recap per person as a story (like a music service's year in review): series and films from Jellyfin, music from ListenBrainz, audiobooks from Audiobookshelf, podcasts through Nextcloud, photos from Immich, game play time from ES-DE and Steam, covers from RomM and Steam and achievements from RetroAchievements, with clips from Navidrome as the soundtrack. Everybody connects their own accounts under My connections."
+    "de": "Ein Monats- und Jahresrückblick pro Person als Story (wie bei Musikdiensten zum Jahresende): Serien und Filme aus Jellyfin, Musik aus ListenBrainz, Hörbücher aus Audiobookshelf, Podcasts über Nextcloud, Fotos aus Immich, Spielzeiten aus ES-DE und Steam, Cover aus RomM und Steam und Erfolge aus RetroAchievements, dazu Ausschnitte aus Navidrome als Soundtrack. Jede Person verbindet ihre eigenen Konten unter „Meine Verbindungen“.",
+    "en": "A monthly and annual recap per person as a story (like a music service's year in review): series and films from Jellyfin, music from ListenBrainz, audiobooks from Audiobookshelf, podcasts through Nextcloud, photos from Immich, game play time from ES-DE and Steam, covers from RomM and Steam and achievements from RetroAchievements, with clips from Navidrome as the soundtrack. Everybody connects their own accounts under My connections."
   },
   "author": "Familienhub",
   "homepage": "https://github.com/Brottuetchen/familienhub-store",
