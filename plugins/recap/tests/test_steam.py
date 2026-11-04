@@ -85,7 +85,7 @@ def test_settings_are_in_manifest_and_code():
     assert mine["RECAP_STEAM_ID"]["type"] == "text" and mine["RECAP_STEAM_API_KEY"]["type"] == "password"
     assert not mine["RECAP_STEAM_API_KEY"].get("default") and not mine["RECAP_STEAM_API_KEY"]["required"]
     assert {"api.steampowered.com", "cdn.cloudflare.steamstatic.com"} <= set(manifest["hosts"])
-    assert RecapPlugin().version == manifest["version"] == "1.6.1"
+    assert RecapPlugin().version == manifest["version"] == "1.6.2"
 
 
 def test_build_without_settings_makes_no_steam_call(people, services):

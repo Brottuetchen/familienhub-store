@@ -18,7 +18,7 @@ main{max-width:520px;margin:0 auto}h1{font-size:2.6rem;font-weight:900;letter-sp
 .card>a.redo{position:absolute;right:14px;top:50%;transform:translateY(-50%);padding:8px 12px;border-radius:999px;
 background:rgba(0,0,0,.25);color:#fff;text-decoration:none;font-size:.8rem}p{opacity:.85;line-height:1.5}
 .pv{display:inline-block;margin-top:14px;color:#fff;opacity:.8;font-size:.9rem}</style></head>
-<body><main><h1>Rückblicke</h1>{{CARDS}}<a class="pv" href="preview/">🎨 Design-Vorschau</a></main></body></html>"""
+<body><main><h1>Rückblicke</h1>{{CARDS}}{{PREVIEW}}</main></body></html>"""
 
 EMPTY_TEXT = ("Noch kein Rückblick da. Sobald du unter „Mehr → Meine Verbindungen“ mindestens einen Dienst "
               "verbunden hast, entsteht am Monatsanfang dein erster Rückblick.")
@@ -33,7 +33,10 @@ def month_label(month: str) -> str:
     return f"{MONTHS[int(number) - 1]} {int(year)}"
 
 
-def render_index(user_id: int) -> str:
+PREVIEW_LINK = '<a class="pv" href="preview/">🎨 Design-Vorschau</a>'  # admins only
+
+
+def render_index(user_id: int, admin: bool = False) -> str:
     cards: List[str] = []
     for month in store.list_months(user_id):
         data = store.read_snapshot(user_id, month) or {}
@@ -43,7 +46,8 @@ def render_index(user_id: int) -> str:
                      f'<span>{de_num(totals.get("media_hours") or 0)} h Medien · {_e(photos)} Fotos</span></a>'
                      f'<a class="redo" href="{month}/neu" onclick="return confirm(\'{_e(month_label(month))} neu gestalten? '
                      f'Das bisherige Design wird ersetzt.\')">✨ Neu gestalten</a></div>')
-    return INDEX_PAGE.replace("{{CARDS}}", "".join(cards) or f"<p>{_e(EMPTY_TEXT)}</p>")
+    return INDEX_PAGE.replace("{{CARDS}}", "".join(cards) or f"<p>{_e(EMPTY_TEXT)}</p>").replace(
+        "{{PREVIEW}}", PREVIEW_LINK if admin else "")
 
 
 REDESIGN_PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8">

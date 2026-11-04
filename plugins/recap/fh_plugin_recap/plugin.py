@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from app.core.logging_config import get_logger
-from app.core.security import get_current_user
+from app.core.security import get_current_admin_user, get_current_user
 from app.plugins import Page, Plugin, Setting, get_setting
 
 try:  # the personal-settings helpers came with plugin pages in the same hub release
@@ -114,6 +114,11 @@ def load_config(user_id: int, overrides: Optional[Dict[str, str]] = None) -> col
         ra_username=mine("RECAP_RA_USERNAME"), ra_api_key=mine("RECAP_RA_API_KEY"),
         steam_id=mine("RECAP_STEAM_ID"), steam_api_key=mine("RECAP_STEAM_API_KEY"),
     )
+
+
+def is_admin(user: Any) -> bool:
+    """Admins as the hub defines them (``get_current_admin_user``): the ``is_admin`` flag or the admin role."""
+    return bool(getattr(user, "is_admin", False) or getattr(user, "role", None) == "admin")
 
 
 def _tz():
@@ -215,15 +220,15 @@ def preview_html(kind, link, palette=None, shape=None, type_=None, offset=None, 
 
 @router.get("/preview", response_class=HTMLResponse)
 async def preview_endpoint(palette: str = "", shape: str = "", type: str = "", offset: str = "", v: str = "",
-                           user=Depends(get_current_user)):
-    """Every slide design with made-up data, side by side."""
+                           user=Depends(get_current_admin_user)):
+    """Every slide design (admins only) with made-up data, side by side."""
     return HTMLResponse(preview_html("g", _api_link, palette, shape, type, offset, v))
 
 
 @router.get("/preview/story", response_class=HTMLResponse)
 async def preview_story_endpoint(palette: str = "", shape: str = "", type: str = "", offset: str = "", v: str = "",
-                                 user=Depends(get_current_user)):
-    """The full swipeable sample story for a choice of palette, shape, type and variants."""
+                                 user=Depends(get_current_admin_user)):
+    """The full swipeable sample (admins only) story for a choice of palette, shape, type and variants."""
     return HTMLResponse(preview_html("s", _api_link, palette, shape, type, offset, v))
 
 
@@ -247,7 +252,7 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.6.1",
+            id=PLUGIN_ID, name="Recap", version="1.6.2",
             description="A monthly recap per person: series, music, audiobooks, podcasts, photos and games as a story.",
             capabilities=frozenset(),
             settings=(
@@ -331,9 +336,11 @@ class RecapPlugin(Plugin):
         if page_id != PAGE_ID:
             return None
         if path in ("", "index.html"):
-            return "text/html; charset=utf-8", views.render_index(user.id).encode("utf-8")
+            return "text/html; charset=utf-8", views.render_index(user.id, admin=is_admin(user)).encode("utf-8")
         look = PREVIEW_PATH.match(path)
         if look:
+            if not is_admin(user):  # the design preview is for admins only
+                return None
             kind, *choice = look.groups()
             text = preview_html(kind or "g", _page_link, *choice)
             if "/" not in path.rstrip("/") and not path.endswith("/"):  # opened as "preview": make the relative links resolve

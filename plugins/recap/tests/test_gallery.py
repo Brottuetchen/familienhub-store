@@ -90,12 +90,16 @@ def test_variant_selection_changes_the_story():
 
 # --- routes ---
 
-def make_client(logged_in):
+ADMIN = SimpleNamespace(id=1, is_admin=True, role="admin")
+PARTNER = SimpleNamespace(id=2, is_admin=False, role="partner")
+
+
+def make_client(logged_in, user=ADMIN):
     app = FastAPI()
     for router in RecapPlugin().routers():
         app.include_router(router)
     if logged_in:
-        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1)
+        app.dependency_overrides[get_current_user] = lambda: user
     return TestClient(app)
 
 
@@ -116,9 +120,18 @@ def test_preview_routes_serve_the_gallery_and_the_story():
     assert client.get("/api/plugins/recap/preview", params={"palette": "kaputt"}).status_code == 200  # falls back to the default
 
 
-def run_page(path):
+def test_preview_routes_are_admin_only():
+    client = make_client(True, PARTNER)
+    for path in ("/api/plugins/recap/preview", "/api/plugins/recap/preview/story"):
+        assert client.get(path).status_code == 403
+    assert make_client(True, SimpleNamespace(id=3, is_admin=False, role="child")).get("/api/plugins/recap/preview").status_code == 403
+    by_role = SimpleNamespace(id=4, is_admin=False, role="admin")  # the hub accepts either marker
+    assert make_client(True, by_role).get("/api/plugins/recap/preview").status_code == 200
+
+
+def run_page(path, user=ADMIN):
     import asyncio
-    return asyncio.run(RecapPlugin().page(SimpleNamespace(id=1), "recaps", path))
+    return asyncio.run(RecapPlugin().page(user, "recaps", path))
 
 
 def test_preview_pages_work_through_the_signed_link():
@@ -132,6 +145,16 @@ def test_preview_pages_work_through_the_signed_link():
     assert run_page("preview/unsinn") is None
 
 
-def test_index_links_to_the_preview(tmp_path):
+def test_preview_pages_are_admin_only():
+    for path in ("preview/", "preview", "preview/s~herbstlaub~stripes~serif~2~books1", "preview/g~neon~glow~caps~0~"):
+        assert run_page(path, PARTNER) is None
+        assert run_page(path)[0].startswith("text/html")
+    index = run_page("", PARTNER)[1].decode()
+    assert "Design-Vorschau" not in index and 'href="preview/"' not in index
+    assert 'href="preview/"' in run_page("")[1].decode()
+
+
+def test_index_links_to_the_preview_for_admins_only(tmp_path):
     from fh_plugin_recap import views
-    assert 'href="preview/"' in views.render_index(1) and "Design-Vorschau" in views.render_index(1)
+    assert 'href="preview/"' in views.render_index(1, admin=True) and "Design-Vorschau" in views.render_index(1, admin=True)
+    assert "Design-Vorschau" not in views.render_index(1) and "Design-Vorschau" not in views.render_index(1, admin=False)
