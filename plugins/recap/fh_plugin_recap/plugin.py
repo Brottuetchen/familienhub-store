@@ -28,7 +28,7 @@ from urllib.parse import quote, urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from app.core.logging_config import get_logger
 from app.core.security import get_current_user
@@ -39,7 +39,7 @@ try:  # the personal-settings helpers came with plugin pages in the same hub rel
 except ImportError:  # pragma: no cover - only on hubs without personal settings
     get_personal_setting = notify = None
 
-from . import build, collectors, store, views
+from . import build, collectors, gallery, store, views
 from .story import MONTHS, de_num
 
 # httpx logs every request URL at INFO level; Navidrome's token and salt are part of the URL, so keep that quiet.
@@ -48,6 +48,8 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = get_logger("plugin.recap")
 REDESIGN_PATH = re.compile(r"^(\d{4}-(?:0[1-9]|1[0-2]))/(neu|status)$")
+# Design preview as a page: "preview/" is the gallery, "preview/g~palette~shape~type~offset~variants" and "preview/s~..." (the story) keep the choices in the path
+PREVIEW_PATH = re.compile(r"^preview(?:/(?:([gs])~([a-z]+)~([a-z]+)~([a-z]+)~(\d)~([a-z0-9.]*)))?/?$")
 
 PLUGIN_ID = "recap"
 PAGE_ID = "recaps"
@@ -193,6 +195,38 @@ async def markdown_endpoint(month: str, user=Depends(get_current_user)):
     return PlainTextResponse(views.render_obsidian(data, route_for(month)), media_type="text/markdown; charset=utf-8")
 
 
+# --- design preview ----------------------------------------------------------------------------------------------
+
+def _api_link(kind, palette, shape, type_, offset, sel) -> str:
+    query = urlencode({"palette": palette, "shape": shape, "type": type_, "offset": offset, "v": gallery.encode_sel(sel)})
+    return f"/api/plugins/{PLUGIN_ID}/preview{'/story' if kind == 's' else ''}?{query}"
+
+
+def _page_link(kind, palette, shape, type_, offset, sel) -> str:
+    return f"{kind}~{palette}~{shape}~{type_}~{offset}~{gallery.encode_sel(sel)}"  # relative to preview/
+
+
+def preview_html(kind, link, palette=None, shape=None, type_=None, offset=None, v="") -> str:
+    palette, shape, type_, offset, sel = gallery.params(palette, shape, type_, offset, v)
+    if kind == "s":
+        return gallery.render_story(palette, shape, type_, offset, sel, link("g", palette, shape, type_, offset, sel))
+    return gallery.render_gallery(palette, shape, type_, offset, sel, link)
+
+
+@router.get("/preview", response_class=HTMLResponse)
+async def preview_endpoint(palette: str = "", shape: str = "", type: str = "", offset: str = "", v: str = "",
+                           user=Depends(get_current_user)):
+    """Every slide design with made-up data, side by side."""
+    return HTMLResponse(preview_html("g", _api_link, palette, shape, type, offset, v))
+
+
+@router.get("/preview/story", response_class=HTMLResponse)
+async def preview_story_endpoint(palette: str = "", shape: str = "", type: str = "", offset: str = "", v: str = "",
+                                 user=Depends(get_current_user)):
+    """The full swipeable sample story for a choice of palette, shape, type and variants."""
+    return HTMLResponse(preview_html("s", _api_link, palette, shape, type, offset, v))
+
+
 # --- connection test -------------------------------------------------------------------------------------------
 
 async def _check(client: httpx.AsyncClient, name: str, call) -> str:
@@ -213,7 +247,7 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.5.0",
+            id=PLUGIN_ID, name="Recap", version="1.6.0",
             description="A monthly recap per person: series, music, audiobooks, podcasts, photos and games as a story.",
             capabilities=frozenset(),
             settings=(
@@ -298,6 +332,13 @@ class RecapPlugin(Plugin):
             return None
         if path in ("", "index.html"):
             return "text/html; charset=utf-8", views.render_index(user.id).encode("utf-8")
+        look = PREVIEW_PATH.match(path)
+        if look:
+            kind, *choice = look.groups()
+            text = preview_html(kind or "g", _page_link, *choice)
+            if "/" not in path.rstrip("/") and not path.endswith("/"):  # opened as "preview": make the relative links resolve
+                text = text.replace("<head>", '<head><base href="preview/">', 1)
+            return "text/html; charset=utf-8", text.encode("utf-8")
         action = REDESIGN_PATH.match(path)
         if action:
             return self._redesign(user.id, *action.groups())

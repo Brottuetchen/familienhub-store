@@ -16,8 +16,9 @@ main{max-width:520px;margin:0 auto}h1{font-size:2.6rem;font-weight:900;letter-sp
 .card>a.go{display:block;padding:18px 20px;border-radius:16px;background:linear-gradient(120deg,#5b2bff,#ff3cac);color:#fff;text-decoration:none}
 .card>a.go b{display:block;font-size:1.4rem}.card>a.go span{opacity:.9;font-size:.9rem}
 .card>a.redo{position:absolute;right:14px;top:50%;transform:translateY(-50%);padding:8px 12px;border-radius:999px;
-background:rgba(0,0,0,.25);color:#fff;text-decoration:none;font-size:.8rem}p{opacity:.85;line-height:1.5}</style></head>
-<body><main><h1>Rückblicke</h1>{{CARDS}}</main></body></html>"""
+background:rgba(0,0,0,.25);color:#fff;text-decoration:none;font-size:.8rem}p{opacity:.85;line-height:1.5}
+.pv{display:inline-block;margin-top:14px;color:#fff;opacity:.8;font-size:.9rem}</style></head>
+<body><main><h1>Rückblicke</h1>{{CARDS}}<a class="pv" href="preview/">🎨 Design-Vorschau</a></main></body></html>"""
 
 EMPTY_TEXT = ("Noch kein Rückblick da. Sobald du unter „Mehr → Meine Verbindungen“ mindestens einen Dienst "
               "verbunden hast, entsteht am Monatsanfang dein erster Rückblick.")
