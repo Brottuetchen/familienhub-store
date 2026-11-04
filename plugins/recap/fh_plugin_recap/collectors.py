@@ -40,6 +40,8 @@ COVER_ERRORS = (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError
 ID_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 STEAM_SEARCH = "https://store.steampowered.com/api/storesearch/"
 STEAM_IMAGES = "https://cdn.cloudflare.steamstatic.com/steam/apps"
+STEAM_API = "https://api.steampowered.com"
+STEAM_RECENT_DAYS = 14  # the window of ``playtime_2weeks``
 RA_API = "https://retroachievements.org/API"
 RA_MEDIA = "https://media.retroachievements.org"
 RA_RAREST = 6  # achievements with a badge picture in the story
@@ -83,6 +85,8 @@ class Config:
     games_devices: Tuple[str, ...] = ()
     ra_username: str = ""
     ra_api_key: str = ""
+    steam_id: str = ""
+    steam_api_key: str = ""
 
     def sources(self) -> List[str]:
         """The statistics sources this person has connected (the soundtrack alone is not one)."""
@@ -97,7 +101,7 @@ class Config:
             found.append("podcasts")
         if self.immich_url and self.immich_key:
             found.append("photos")
-        if self.games_devices:
+        if self.games_devices or (self.steam_id and self.steam_api_key):
             found.append("games")
         if self.ra_username and self.ra_api_key:
             found.append("retroachievements")
@@ -790,6 +794,11 @@ async def steam_cover(client: httpx.AsyncClient, img: Path, term: str, name: str
             break
     if not app_id.isdigit():
         return None
+    return await steam_app_cover(client, img, app_id, name)
+
+
+async def steam_app_cover(client: httpx.AsyncClient, img: Path, app_id: str, name: str) -> Optional[str]:
+    """The portrait of a known Steam app from the public CDN (no key), else its header picture."""
     for file in ("library_600x900.jpg", "header.jpg"):
         path = await save_image(client, f"{STEAM_IMAGES}/{app_id}/{file}", img, name)
         if path:
@@ -932,29 +941,136 @@ def games_delta(base: Optional[Dict[str, Any]], final: Dict[str, Any], start, en
     return out
 
 
+# --- Steam library (Web API, the person's own SteamID64 and API key) --------------------------------------------
+# ``GetOwnedGames`` also only knows cumulative play time (in minutes, all devices), so it gets the same daily
+# snapshots as ES-DE (``store.write_steam``). The key travels as a query parameter (that is how the API works), so
+# it only ever goes through ``params`` and no error text is kept, as with RetroAchievements.
+
+async def steam_owned(client, cfg: Config) -> Dict[str, Dict[str, Any]]:
+    """``{app id: {name, forever, deck, linux, windows, last_played, recent}}`` of the whole library (minutes, unix
+    seconds). An answer without games (private profile or game details) raises: it must never become a snapshot, or
+    the next month would take every game as new."""
+    data = await get_json(client, f"{STEAM_API}/IPlayerService/GetOwnedGames/v1/", params={
+        "key": cfg.steam_api_key, "steamid": cfg.steam_id, "include_appinfo": 1, "include_played_free_games": 1})
+    games = (data.get("response") or {}).get("games") if isinstance(data, dict) and isinstance(data.get("response"), dict) else None
+    if not isinstance(games, list) or not games:
+        raise LookupError("No Steam games visible")
+    out: Dict[str, Dict[str, Any]] = {}
+    for g in games:
+        if not (isinstance(g, dict) and isinstance(g.get("appid"), int)):
+            continue
+        out[str(g["appid"])] = {
+            "name": str(g.get("name") or "").strip(), "forever": _whole(g.get("playtime_forever")),
+            "deck": _whole(g.get("playtime_deck_forever")), "linux": _whole(g.get("playtime_linux_forever")),
+            "windows": _whole(g.get("playtime_windows_forever")), "last_played": _whole(g.get("rtime_last_played")),
+            "recent": _whole(g.get("playtime_2weeks"))}
+    return out
+
+
+def steam_delta(base: Optional[Dict[str, Any]], final: Dict[str, Any], start, end, as_of) -> Dict[str, Dict[str, Any]]:
+    """Per Steam app the minutes played in [start, end): the end state minus the baseline (``base`` None = no
+    snapshot before the month). An app missing from the baseline counts from zero (bought or first played since).
+
+    Without a baseline only an app last played within the month counts, and only with ``playtime_2weeks``: the
+    lifetime total would be years of play. That number covers the 14 days before ``as_of`` (when ``final`` was
+    taken) and, as the app was last played inside the month, nothing after it; it is used only when that window lies
+    wholly inside the month, else the app is left out. Zero, negative (hidden or reset play time) and more than the
+    month holds are never counted."""
+    cap = (end - start).total_seconds() / 60
+    window_ok = as_of - dt.timedelta(days=STEAM_RECENT_DAYS) >= start
+    out: Dict[str, Dict[str, Any]] = {}
+    for app_id, now in final.items():
+        if base is not None:
+            old = base.get(app_id)
+            minutes = now["forever"] - (old["forever"] if old else 0)
+            new = not old or old["forever"] == 0
+        else:
+            if not (start.timestamp() <= now["last_played"] < end.timestamp() and window_ok):
+                continue
+            minutes = min(now["recent"], now["forever"])
+            new = now["forever"] <= now["recent"]
+        if 0 < minutes <= cap and now["name"]:
+            out[app_id] = {"name": now["name"], "minutes": minutes, "new": new}
+    return out
+
+
+def title_key(name: str) -> str:
+    """A title as one comparable string: no case, edition suffix, leading article, spaces or punctuation."""
+    text = EDITION_RE.sub("", str(name)).casefold()
+    return re.sub(r"[\W_]+", "", re.sub(r"^(the|der|die|das)\s+", "", text.strip()))
+
+
+def merge_steam(rows: List[Dict[str, Any]], played: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Adds the Steam apps to the ES-DE rows. ES-DE launches of Steam/PC games (system ``steam`` or ``windows``) with
+    the same title are the same play time that Steam counts itself (on every device), so the two are never added:
+    the ES-DE rows of the title are summed (they can be one game launched through two systems) and the larger of that
+    and the Steam value wins. The row keeps the ES-DE launch count, takes the Steam name and the label *Steam*."""
+    by_title: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        if row["_key"].split("/", 1)[0] in ("steam", "windows"):
+            by_title.setdefault(title_key(row["name"]), []).append(row)
+    out = list(rows)
+    for app_id, v in played.items():
+        twins = by_title.get(title_key(v["name"])) or []
+        if not twins:
+            out.append({"name": v["name"], "system": "Steam", "minutes": v["minutes"], "sessions": 0, "cover": None,
+                        "new": v["new"], "_key": f"steam/{app_id}", "_app": app_id})
+            continue
+        first = twins[0]
+        first.update(name=v["name"], system="Steam", _app=app_id, new=first["new"] and v["new"],
+                     minutes=max(v["minutes"], sum(x["minutes"] for x in twins)), sessions=sum(x["sessions"] for x in twins))
+        for extra in twins[1:]:
+            out.remove(extra)
+    return out
+
+
 async def collect_games(client, cfg: Config, start, end, img: Path, base: Optional[Dict[str, Any]],
-                        final: Optional[Dict[str, Any]] = None, covers: Optional[Covers] = None) -> Dict[str, Any]:
+                        final: Optional[Dict[str, Any]] = None, covers: Optional[Covers] = None,
+                        steam: Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Any] = (None, None, None),
+                        errors: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """The games of the month. ``final`` is the state at the end of the month (the first snapshot of the next month),
-    else the current device files."""
+    else the current device files. ``steam`` is ``(baseline, end state, time of the end state)`` of the Steam library
+    (the end state None = ask Steam now). A failing Steam request is noted in ``errors`` and leaves the ES-DE games."""
     covers = covers or Covers()
-    if final is None:
+    if final is None and cfg.games_devices:
         final = read_games(cfg.games_dir, cfg.games_devices)
-    if not final:
-        raise LookupError("No game statistics readable")
-    played = games_delta(base, final, start, end)
+    played = games_delta(base, final, start, end) if final else {}
     rows = []
     for key, v in played.items():
         system, rel = key.split("/", 1)
         rows.append({"name": clean_game_name(rel), "system": system_label(system), "minutes": round(v["seconds"] / 60),
                      "sessions": v["sessions"], "cover": None, "new": v["new"], "_key": key})
+    steam_played: Dict[str, Dict[str, Any]] = {}
+    if cfg.steam_id and cfg.steam_api_key:
+        steam_base, steam_final, steam_time = steam
+        try:
+            if steam_final is None:
+                steam_final, steam_time = await steam_owned(client, cfg), dt.datetime.now(start.tzinfo)
+            steam_played = steam_delta(steam_base, steam_final, start, end, steam_time or dt.datetime.now(start.tzinfo))
+        except Exception as exc:  # noqa: BLE001 - the ES-DE games (if any) are still worth a story
+            if not final:
+                raise
+            if errors is not None:
+                errors["steam"] = describe_error(exc)
+    elif not final:
+        raise LookupError("No game statistics readable")
     rows = [x for x in rows if x["minutes"] > 0 and x["name"]]
+    rows = merge_steam(rows, steam_played)
     rows.sort(key=lambda x: (-x["minutes"], x["name"].casefold()))
     top = rows[:8]
     romm = Romm(client, cfg)
 
     async def game_cover(row):
-        """RomM (title and cover) for everything but Steam/PC games, then the Steam store, else None (placeholder)."""
+        """Steam's own picture for a known app, else RomM (title and cover) for everything but Steam/PC games, then
+        the Steam store search, else None (placeholder)."""
         system, rel = row["_key"].split("/", 1)
+        if row.get("_app"):
+            try:
+                path = await steam_app_cover(client, img, row["_app"], f"gm-{slug(row['name'])}")
+            except COVER_ERRORS:
+                path = None
+            if path:
+                return path
         hit = None
         if system not in ("steam", "windows"):
             hit = await romm.find(system, rel)
@@ -973,6 +1089,7 @@ async def collect_games(client, cfg: Config, start, end, img: Path, base: Option
     await covers.fill([(x, "cover", (lambda x=x: game_cover(x))) for x in top])
     for x in rows:
         x.pop("_key")
+        x.pop("_app", None)
     systems: collections.Counter = collections.Counter()
     for x in rows:
         systems[x["system"]] += x["minutes"]

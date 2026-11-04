@@ -8,6 +8,7 @@ Layout below the hub's data directory (no database tables)::
         2026-10/index.html      the story
         2026-10/img/*.jpg|png|webp|mp3   posters, photos, covers, soundtrack clips
         games/2026-10-31.json   daily state of the game statistics (cumulative play time per device and game)
+        steam/2026-10-31.json   daily state of the Steam library (cumulative play time per app id)
 
 Everything a person can ask for through a page link is mapped to one of these files by *building* the path from
 validated parts, never by joining what the browser sent.
@@ -138,6 +139,32 @@ def read_games(user_id: int, day: str) -> Optional[Dict[str, Any]]:
 
 def write_games(user_id: int, day: str, data: Dict[str, Any]) -> None:
     _atomic_write(games_path(user_id, day), json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+# --- daily Steam snapshots (the Web API also only knows cumulative play time; its own folder, so a device named
+# "steam" in the ES-DE snapshots can never collide with it) ---------------------------------------------------------
+
+def steam_path(user_id: int, day: str) -> Path:
+    if not DAY_RE.match(day):
+        raise ValueError("bad day")
+    return user_dir(user_id) / "steam" / f"{day}.json"
+
+
+def steam_days(user_id: int) -> List[str]:
+    """The days that have a Steam snapshot, oldest first."""
+    try:
+        names = os.listdir(user_dir(user_id) / "steam")
+    except OSError:
+        return []
+    return sorted(n[:-5] for n in names if n.endswith(".json") and DAY_RE.match(n[:-5]))
+
+
+def read_steam(user_id: int, day: str) -> Optional[Dict[str, Any]]:
+    return read_json(steam_path(user_id, day))
+
+
+def write_steam(user_id: int, day: str, data: Dict[str, Any]) -> None:
+    _atomic_write(steam_path(user_id, day), json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
 # --- failed attempts (so a broken month is not retried every hour) ---------------------------------------------
