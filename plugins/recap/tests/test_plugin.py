@@ -644,3 +644,39 @@ def test_build_endpoint_passes_redesign_and_rebuilds_an_existing_month(client, f
     assert client.post("/api/plugins/recap/build?redesign=true").json()["status"] == "started"
     wait_for_months(client)
     assert seen == [False, True]
+
+
+# --- "Neu gestalten" from the archive page ---
+
+def test_archive_offers_a_redesign_per_month_that_starts_a_fresh_design(people, services, monkeypatch):
+    build_for()
+    plugin = RecapPlugin()
+    _, index = page(plugin, 1, "")
+    assert b'href="2026-10/neu"' in index and "Neu gestalten".encode() in index and b"confirm(" in index
+    started = []
+    monkeypatch.setattr(build, "start", lambda uid, month, cfg, tz, **kw: started.append((uid, month, kw["redesign"])) or "started")
+    ctype, body = page(plugin, 1, "2026-10/neu")
+    assert ctype.startswith("text/html") and started == [(1, MONTH, True)]
+    assert "neues Design".encode() in body and b"fetch('status'" in body and b"location.replace('./')" in body
+    monkeypatch.setattr(build, "is_running", lambda uid, month: True)
+    ctype, body = page(plugin, 1, "2026-10/status")
+    assert ctype == "application/json" and json.loads(body) == {"running": True}
+    ctype, body = page(plugin, 1, "2026-10/neu")  # a second tap while it runs does not start another build
+    assert started == [(1, MONTH, True)] and "gerade neu gebaut".encode() in body
+
+
+def test_redesign_page_explains_when_another_build_is_running(people, services, monkeypatch):
+    build_for()
+    monkeypatch.setattr(build, "start", lambda *a, **kw: "busy")
+    _, body = page(RecapPlugin(), 1, "2026-10/neu")
+    assert "anderer Rückblick".encode() in body and b"fetch(" not in body and b'href="../"' in body
+
+
+def test_redesign_is_only_offered_for_existing_months_of_that_person(people, services, monkeypatch):
+    build_for()
+    monkeypatch.setattr(build, "start", lambda *a, **kw: pytest.fail("must not build"))
+    plugin = RecapPlugin()
+    assert page(plugin, 2, "2026-10/neu") is None  # someone else's month
+    assert page(plugin, 1, "2026-09/neu") is None  # not built
+    for bad in ("2026-13/neu", "../2026-10/neu", "2026-10/neu/x", "2026-10/delete"):
+        assert page(plugin, 1, bad) is None
