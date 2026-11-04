@@ -60,6 +60,9 @@ Personal (*More → My connections*), all optional; the form has a *Test connect
 | `RECAP_IMMICH_KEY` | Your Immich API key. Secret. |
 | `RECAP_NAVIDROME_USER`, `RECAP_NAVIDROME_PASSWORD` | Your Navidrome login (used with Subsonic token authentication, the password is never sent). Secret. |
 | `RECAP_NEXTCLOUD_USER`, `RECAP_NEXTCLOUD_APP_PASSWORD` | Your Nextcloud user name and an **app password**. Secret. |
+| `RECAP_RA_USERNAME`, `RECAP_RA_API_KEY` | Your RetroAchievements user name and Web API key (retroachievements.org → Settings → Keys). The key is a secret. Empty (either one) = no achievements slide. |
+
+RetroAchievements: the achievements you earned in the month (`API_GetAchievementsEarnedBetween`, month boundaries in the hub's timezone) become an *Achievements* slide right after the games: count, points, the rarest achievements as a badge grid and the games with the most achievements. Games mastered or beaten in the month (`API_GetUserAwards`) get a slide of their own. Badges and icons are downloaded at build time like all other pictures (placeholder tiles when one fails). A failing RA request only leaves the slide out. The key is sent as the API requires (query parameter), is never logged and never stored in the recap.
 
 The plugin is active without any setting. A person with no source connected simply gets no recap.
 

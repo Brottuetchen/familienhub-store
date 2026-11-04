@@ -95,6 +95,7 @@ async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, r
                 "podcasts": lambda: collectors.collect_podcasts(client, cfg, start, end, img, covers),
                 "photos": lambda: collectors.collect_immich(client, cfg, start, end, img),
                 "games": lambda: collectors.collect_games(client, cfg, start, end, img, *game_states(user_id, start, end), covers),
+                "retroachievements": lambda: collectors.collect_retroachievements(client, cfg, start, end, img, covers),
             }
             wanted = cfg.sources()
             for key, step in steps.items():
@@ -113,7 +114,8 @@ async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, r
             except Exception as exc:  # noqa: BLE001
                 data["errors"]["soundtrack"] = collectors.describe_error(exc)
 
-        got_data = bool(data["totals"]["media_hours"] or (data["photos"] or {}).get("total"))
+        got_data = bool(data["totals"]["media_hours"] or (data["photos"] or {}).get("total")
+                        or (data["retroachievements"] or {}).get("total"))
         if not got_data and data["errors"]:
             raise BuildFailed("nothing collected and a source failed")
 

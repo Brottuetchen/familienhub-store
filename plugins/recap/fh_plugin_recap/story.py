@@ -46,9 +46,9 @@ PALETTES = {
 SHAPES = ["blobs", "stripes", "rings", "glow"]
 TYPES = ["bold", "caps", "serif"]
 VARIANTS = {"intro": 3, "total": 3, "series": 3, "binge": 2, "movies": 2, "music": 3, "books": 2, "pods": 2,
-            "photos": 3, "games": 3, "outro": 2}
+            "photos": 3, "games": 3, "ra": 2, "outro": 2}
 # Added after the first releases: chosen from an own random stream, so the choices for all other slides stay as they were
-LATE_SLIDES = ("games",)
+LATE_SLIDES = ("games", "ra")
 GAME_MARATHON_MINUTES = 600
 KICKERS = {
     "intro": ["Dein Rückblick", "Das war dein", "Zurückgespult", "Zeit für den Rückblick"],
@@ -61,6 +61,7 @@ KICKERS = {
     "pods": ["Podcasts", "Auf die Ohren", "Gesprächsstoff"],
     "photos": ["Festgehalten", "Deine Momente", "Durch die Linse", "Erinnerungen"],
     "games": ["Game on", "Controller in der Hand", "Zocker-Bilanz", "Level-Up", "Noch ein Versuch"],
+    "ra": ["Achievements", "Erfolge freigeschaltet", "Trophäenjagd", "Retro-Bilanz"],
     "outro": ["Dein {m} {y}", "Das war {m}", "{m} in Zahlen"],
 }
 
@@ -203,6 +204,8 @@ def highlights(data, history):
         top = ga["games"][0]
         if top["minutes"] >= GAME_MARATHON_MINUTES:  # one game for ten hours or more in a single month
             out["game_marathon"] = {"name": top["name"], "hours": round(top["minutes"] / 60, 1), "sessions": top["sessions"]}
+    if (data.get("retroachievements") or {}).get("awards"):  # a game mastered or beaten this month
+        out["ra_awards"] = data["retroachievements"]["awards"][:4]
     return out
 
 
@@ -276,6 +279,7 @@ def render(data, prev, history):
     mname = MONTHS[m - 1]
     jf, mu, ab, pc, ph, t = (data.get(k) or {} for k in ("jellyfin", "music", "audiobooks", "podcasts", "photos", "totals"))
     ga = data.get("games") or {}
+    ra = data.get("retroachievements") or {}
     P = lambda *p: get(prev, *p) if prev else None  # noqa: E731
     V, T = d["variants"], d["texts"]  # designs stored before a slide type existed lack its entries: first variant and text
     kick = lambda k: f'<p class="kicker">{e(KICKERS[k][T.get(k, 0)].format(m=mname, y=y))}</p>'  # noqa: E731
@@ -482,6 +486,29 @@ def render(data, prev, history):
                 f'<p class="lead">Am längsten gespielt: <b>{e(top["name"])}</b> ({game_time(top["minutes"])}).</p>'
                 f'<p class="foot">{sys_txt}</p>{extra}{dl}')
 
+
+    # RetroAchievements: right after the games (or last, without games)
+    if ra.get("total"):
+        rv = V.get("ra", 0)
+        n = ra["total"]
+        hc = ra.get("hardcore", 0)
+        best = (ra.get("rarest") or [])[:6]
+        big = f'<p class="big">{count(n)}<small> {"Erfolg" if n == 1 else "Erfolge"}</small></p>'
+        pts = (f'<p class="lead"><b>{de_num(ra["points"])}</b> Punkte'
+               + (f', davon {hc} im Hardcore-Modus' if hc and hc < n else ', alle im Hardcore-Modus' if hc else "")
+               + f' in {ra["games_count"]} {"Spiel" if ra["games_count"] == 1 else "Spielen"}.</p>')
+        rg = ra.get("games") or []
+        tiles = "".join(f'<figure>{img(x.get("badge"), "", x["title"])}<figcaption>{e(x["title"])}'
+                        f'<span>{de_num(x["points"])} Punkte</span></figcaption></figure>' for x in best)
+        rows = "".join(f'<li>{img(x.get("icon"), "th", x["name"])}<b>{e(x["name"])}</b>'
+                       f'<span>{e(x.get("console") or "")} · {x["count"]} {"Erfolg" if x["count"] == 1 else "Erfolge"}</span></li>' for x in rg)
+        if rv == 1 and rg:
+            add("ra", -1, f'{kick("ra")}{big}{pts}<ol class="list thumbs">{rows}</ol>')
+        else:
+            foot = (f'<p class="foot">Am häufigsten: <b>{e(rg[0]["name"])}</b> ({rg[0]["count"]}).</p>' if rg else "")
+            add("ra", -1, f'{kick("ra")}{big}{pts}'
+                + (f'<div class="badges">{tiles}</div><p class="foot">Deine seltensten Erfolge.</p>' if best else "") + foot)
+
     # Highlight slides
     special = {}
     if hl.get("record"):
@@ -512,6 +539,15 @@ def render(data, prev, history):
         special.setdefault("games", []).append(("marathon", f'<p class="kicker">Dauerbrenner</p><p class="big">{count(gm["hours"], 1)}<small> Stunden</small></p>'
                                                 f'<h2 class="title">{e(gm["name"])}</h2><p class="lead">So lange hast du dieses Spiel in einem Monat gespielt{starts}.</p>'
                                                 f'{img(cover, "poster tilt") if cover else ""}', None))
+    if hl.get("ra_awards"):
+        aw = hl["ra_awards"]
+        names = {"mastered": "gemeistert", "completed": "abgeschlossen", "beaten": "durchgespielt", "beaten_soft": "durchgespielt"}
+        li = "".join(f'<li>{img(a.get("icon"), "th", a["title"])}<b>{e(a["title"])}</b><span>{e(a.get("console") or "")} · '
+                     f'{names.get(a["kind"], "geschafft")}{"" if a.get("hardcore") else " (Softcore)"}</span></li>' for a in aw)
+        special.setdefault("ra", []).append(("ra_awards", f'<p class="kicker">Geschafft</p><h2 class="title">{e(aw[0]["title"])}</h2>'
+                                              f'<p class="lead">{"Dieses Spiel hast du diesen Monat" if len(aw) == 1 else "Diese Spiele hast du diesen Monat"} '
+                                              f'<b>{names.get(aw[0]["kind"], "geschafft")}</b>.</p>'
+                                              f'<ol class="list thumbs">{li}</ol>', None))
     if hl.get("streak"):
         sd = dt.date.fromisoformat(hl["streak"]["from"])
         special.setdefault("binge", []).append(("streak", f'<p class="kicker">Am Stück</p><p class="big">{count(hl["streak"]["days"])}<small> Tage</small></p>'
@@ -524,13 +560,15 @@ def render(data, prev, history):
         order.append(c)
         if c[0] == "series":
             order += [x for x in content if x[0] == "binge"]
+        if c[0] == "games":
+            order += [x for x in content if x[0] == "ra"]
     order += [c for c in content if c[1] < 0 and c not in order]
     slides = [("intro", intro, None), ("total", total, None)]
     slides += [(k, h, None) for k, h, _ in special.get("total", [])]
     for key, _, inner, bd in order:
         slides.append((key, inner, bd))
         slides += [(k, h, b) for k, h, b in special.get(key, [])]
-    for key in ("series", "binge", "music", "photos", "games"):
+    for key in ("series", "binge", "music", "photos", "games", "ra"):
         if key in special and not any(c[0] == key for c in order):
             slides += [(k, h, b) for k, h, b in special[key]]
 
@@ -540,6 +578,8 @@ def render(data, prev, history):
              ("Hörbuch-Stunden", de_num(ab.get("hours", 0), 1)), ("Fotos & Videos", ph.get("total", 0))]
     if ga.get("games"):
         facts += [("Spiele", ga["games_count"]), ("Stunden gespielt", de_num(ga["hours"], 1))]
+    if ra.get("total"):
+        facts += [("Erfolge", de_num(ra["total"]))]
     tops = [("Serie", get(jf, "series", 0, "name")), ("Künstler", get(mu, "top_artists", 0, "name")),
             ("Hörbuch", get(ab, "books", 0, "title")), ("Podcast", get(pc, "podcasts", 0, "title")), ("Spiel", get(ga, "games", 0, "name"))]
     if V["outro"] == 1:
@@ -716,6 +756,11 @@ html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);o
 .tap.l{left:0}.tap.r{right:0;width:66%}
 .np{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:2;text-align:center;font-size:.78rem;font-weight:700;opacity:.75;padding:0 70px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .snd{position:fixed;z-index:6;top:calc(env(safe-area-inset-top) + 24px);right:max(12px,calc(50vw - 248px));width:40px;height:40px;border-radius:50%;border:0;background:rgba(0,0,0,.35);color:#fff;font-size:1.1rem;cursor:pointer}
+.badges{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 8px;margin-top:16px}
+.badges figure{text-align:center}
+.badges img,.badges .ph{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;box-shadow:0 8px 20px rgba(0,0,0,.4);background:rgba(255,255,255,.15)}
+.badges figcaption{font-size:.7rem;font-weight:700;margin-top:6px;line-height:1.2}
+.badges figcaption span{display:block;opacity:.75;font-weight:600}
 .thumbs .th{width:44px;height:44px;border-radius:10px;object-fit:cover;background:rgba(255,255,255,.18);align-self:center}
 .list.thumbs li{grid-template-columns:28px 44px 1fr;align-items:center}
 .list.thumbs .th{grid-row:span 2}
