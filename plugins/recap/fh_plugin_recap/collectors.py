@@ -29,7 +29,7 @@ USER_AGENT = "familienhub-recap/1.0"
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_FEED_BYTES = 3 * 1024 * 1024
 CLIP_SECONDS = 11
-CLIP_COUNT = 20  # one song per slide; a month with every special slide has about 18
+CLIP_COUNT = 22  # one song per slide; a month with every special slide has about 20
 COVER_CONCURRENCY = 4  # cover lookups running at the same time
 COVER_MAX_JOBS = 80  # lookups per build; further items get the generated placeholder
 COVER_SECONDS = 180  # all lookups of one build together
@@ -40,6 +40,13 @@ COVER_ERRORS = (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError
 ID_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 STEAM_SEARCH = "https://store.steampowered.com/api/storesearch/"
 STEAM_IMAGES = "https://cdn.cloudflare.steamstatic.com/steam/apps"
+RA_API = "https://retroachievements.org/API"
+RA_MEDIA = "https://media.retroachievements.org"
+RA_RAREST = 6  # achievements with a badge picture in the story
+RA_TOP_GAMES = 5
+RA_MAX_AWARDS = 4
+RA_AWARDS = {("Mastery/Completion", 1): "mastered", ("Mastery/Completion", 0): "completed",
+             ("Game Beaten", 1): "beaten", ("Game Beaten", 0): "beaten_soft"}
 DEVICE_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 GAME_PREFIX = "game:./"
 GAME_SYSTEMS = {
@@ -74,6 +81,8 @@ class Config:
     romm_url: str = ""
     romm_token: str = ""
     games_devices: Tuple[str, ...] = ()
+    ra_username: str = ""
+    ra_api_key: str = ""
 
     def sources(self) -> List[str]:
         """The statistics sources this person has connected (the soundtrack alone is not one)."""
@@ -90,6 +99,8 @@ class Config:
             found.append("photos")
         if self.games_devices:
             found.append("games")
+        if self.ra_username and self.ra_api_key:
+            found.append("retroachievements")
         return found
 
     @property
@@ -969,6 +980,117 @@ async def collect_games(client, cfg: Config, start, end, img: Path, base: Option
             "sessions": sum(x["sessions"] for x in rows), "games_count": len(rows), "systems_count": len(systems),
             "systems": [{"name": n, "minutes": m} for n, m in systems.most_common()],
             "top_system": systems.most_common(1)[0][0] if systems else None, "games": top}
+
+
+# --- RetroAchievements (Web API, the person's own user name and API key) ----------------------------------------
+# The key travels as a query parameter (that is how the API works), so it only ever goes through ``params`` and no
+# error text is kept: ``describe_error`` records the class of a failure, never a URL.
+
+def _ra_int(value: Any) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _ra_media(path: Any) -> Optional[str]:
+    """Address of a picture on the RetroAchievements media host from the API's path (``/Badge/123.png``)."""
+    text = str(path or "").strip()
+    if re.fullmatch(r"/[A-Za-z0-9_./-]{1,120}", text) and ".." not in text and not text.startswith("//"):
+        return RA_MEDIA + text
+    return None
+
+
+def _ra_time(value: Any) -> Optional[dt.datetime]:
+    """The API's timestamps (``2026-10-05 12:34:56`` or ISO with an offset) are UTC; None if unreadable."""
+    try:
+        when = dt.datetime.fromisoformat(str(value).strip().replace("Z", "+00:00").replace(" ", "T", 1))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=dt.timezone.utc)
+
+
+async def ra_json(client, cfg: Config, endpoint: str, **extra) -> Any:
+    return await get_json(client, f"{RA_API}/{endpoint}", params={"u": cfg.ra_username, "y": cfg.ra_api_key, **extra})
+
+
+async def ra_awards(client, cfg: Config, start, end) -> List[dict]:
+    """Games mastered, completed or beaten in [start, end). Soft: any failure gives no awards, the achievements stay."""
+    try:
+        raw = await ra_json(client, cfg, "API_GetUserAwards.php")
+        items = raw.get("VisibleUserAwards") if isinstance(raw, dict) else raw
+        out, seen = [], set()
+        for a in items if isinstance(items, list) else []:
+            if not isinstance(a, dict):
+                continue
+            kind = RA_AWARDS.get((str(a.get("AwardType") or ""), 1 if _ra_int(a.get("AwardDataExtra")) else 0))
+            when = _ra_time(a.get("AwardedAt"))
+            key = (kind, a.get("AwardData"))
+            if kind is None or key in seen or when is None or not start <= when < end or not str(a.get("Title") or "").strip():
+                continue
+            seen.add(key)
+            out.append({"title": str(a["Title"]).strip(), "console": str(a.get("ConsoleName") or "").strip(), "kind": kind,
+                        "hardcore": kind in ("mastered", "beaten"), "icon": None,
+                        "_icon": _ra_media(a.get("ImageIcon")), "_id": _ra_int(a.get("AwardData"))})
+        return out
+    except COVER_ERRORS:
+        return []
+
+
+async def collect_retroachievements(client, cfg: Config, start, end, img: Path,
+                                    covers: Optional[Covers] = None) -> Dict[str, Any]:
+    """The achievements earned in [start, end) (both in the hub's timezone). An achievement earned in both modes
+    counts once, as hardcore. The badges of the rarest ones and the icons of the top games are stored as files."""
+    covers = covers or Covers()
+    lo, hi = int(start.timestamp()), int(end.timestamp())
+    raw = await ra_json(client, cfg, "API_GetAchievementsEarnedBetween.php", f=lo, t=hi)
+    if not isinstance(raw, list):
+        raise LookupError("Unexpected RetroAchievements answer")
+    earned: Dict[int, dict] = {}
+    for a in raw:
+        if not isinstance(a, dict) or not _ra_int(a.get("AchievementID")) or not str(a.get("Title") or "").strip():
+            continue
+        when = _ra_time(a.get("Date"))
+        if when is not None and not lo <= when.timestamp() < hi:
+            continue
+        key = _ra_int(a["AchievementID"])
+        if key not in earned or (_ra_int(a.get("HardcoreMode")) and not _ra_int(earned[key].get("HardcoreMode"))):
+            earned[key] = a
+    games: Dict[int, dict] = {}
+    rows = []
+    for key, a in earned.items():
+        points, true_points = _ra_int(a.get("Points")), _ra_int(a.get("TrueRatio"))
+        badge = a.get("BadgeURL") or (f"/Badge/{a['BadgeName']}.png" if re.fullmatch(r"\w{1,20}", str(a.get("BadgeName") or "")) else None)
+        game_id = _ra_int(a.get("GameID"))
+        rows.append({"id": key, "title": str(a.get("Title") or "").strip(), "description": str(a.get("Description") or "").strip(),
+                     "points": points, "true_points": true_points, "hardcore": bool(_ra_int(a.get("HardcoreMode"))),
+                     "game": str(a.get("GameTitle") or "").strip(), "badge": None, "_badge": _ra_media(badge)})
+        g = games.setdefault(game_id, {"name": str(a.get("GameTitle") or "").strip(), "console": str(a.get("ConsoleName") or "").strip(),
+                                       "count": 0, "points": 0, "icon": None, "_icon": _ra_media(a.get("GameIcon")), "_id": game_id})
+        g["count"] += 1
+        g["points"] += points
+    top_games = sorted((g for g in games.values() if g["name"]), key=lambda g: (-g["count"], -g["points"], g["name"].casefold()))[:RA_TOP_GAMES]
+    # The rarest: the most "true" points per point (the weighting makes an achievement worth more the fewer have it)
+    rarest = sorted((x for x in rows if x["points"] > 0), key=lambda x: (-x["true_points"] / x["points"], -x["points"], x["title"].casefold()))[:RA_RAREST]
+    awards = (await ra_awards(client, cfg, start, end))[:RA_MAX_AWARDS] if rows else []
+
+    async def pic(url, name):
+        return await save_image(client, url, img, name) if url else None
+
+    jobs = [(x, "badge", (lambda x=x: pic(x["_badge"], f"ra-b{x['id']}"))) for x in rarest] \
+        + [(g, "icon", (lambda g=g: pic(g["_icon"], f"ra-g{g['_id']}"))) for g in top_games] \
+        + [(a, "icon", (lambda a=a: pic(a["_icon"], f"ra-a{a['_id']}"))) for a in awards]
+    await covers.fill(jobs)
+    for x in rarest:
+        x.pop("_badge")
+    for g in top_games:
+        g.pop("_icon"), g.pop("_id")
+    for a in awards:
+        a.pop("_icon"), a.pop("_id")
+    hardcore = sum(1 for x in rows if x["hardcore"])
+    return {"total": len(rows), "points": sum(x["points"] for x in rows), "true_points": sum(x["true_points"] for x in rows),
+            "hardcore": hardcore, "softcore": len(rows) - hardcore, "games_count": len({x["game"] for x in rows}),
+            "games": top_games, "rarest": [{k: v for k, v in x.items() if k != "id"} for x in rarest], "awards": awards}
 
 
 # --- Soundtrack from Navidrome (Subsonic API) ------------------------------------------------------------------

@@ -60,7 +60,7 @@ GLOBAL_KEYS = ("RECAP_JELLYFIN_URL", "RECAP_JELLYFIN_TOKEN", "RECAP_ABS_URL", "R
                "RECAP_ROMM_TOKEN")
 PERSONAL_KEYS = ("RECAP_JELLYFIN_USER", "RECAP_LISTENBRAINZ_USER", "RECAP_LISTENBRAINZ_TOKEN", "RECAP_ABS_TOKEN",
                  "RECAP_IMMICH_KEY", "RECAP_NAVIDROME_USER", "RECAP_NAVIDROME_PASSWORD", "RECAP_NEXTCLOUD_USER",
-                 "RECAP_NEXTCLOUD_APP_PASSWORD", "RECAP_GAMES_DEVICES")
+                 "RECAP_NEXTCLOUD_APP_PASSWORD", "RECAP_GAMES_DEVICES", "RECAP_RA_USERNAME", "RECAP_RA_API_KEY")
 
 router = APIRouter(prefix=f"/api/plugins/{PLUGIN_ID}", tags=[PLUGIN_ID])
 
@@ -108,6 +108,7 @@ def load_config(user_id: int, overrides: Optional[Dict[str, str]] = None) -> col
         navidrome_user=mine("RECAP_NAVIDROME_USER"), navidrome_password=mine("RECAP_NAVIDROME_PASSWORD"),
         nextcloud_user=mine("RECAP_NEXTCLOUD_USER"), nextcloud_password=mine("RECAP_NEXTCLOUD_APP_PASSWORD"),
         games_devices=collectors.parse_devices(mine("RECAP_GAMES_DEVICES")),
+        ra_username=mine("RECAP_RA_USERNAME"), ra_api_key=mine("RECAP_RA_API_KEY"),
     )
 
 
@@ -210,7 +211,7 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.3.0",
+            id=PLUGIN_ID, name="Recap", version="1.4.0",
             description="A monthly recap per person: series, music, audiobooks, podcasts, photos and games as a story.",
             capabilities=frozenset(),
             settings=(
@@ -237,6 +238,8 @@ class RecapPlugin(Plugin):
                 Setting("RECAP_NEXTCLOUD_APP_PASSWORD", "Nextcloud app password", secret=True, required=False,
                         type="password"),
                 Setting("RECAP_GAMES_DEVICES", "Game devices (ES-DE)", required=False),
+                Setting("RECAP_RA_USERNAME", "RetroAchievements user name", required=False),
+                Setting("RECAP_RA_API_KEY", "RetroAchievements API key", secret=True, required=False, type="password"),
             ),
             pages=(Page(PAGE_ID, {"de": "Rückblicke", "en": "Recaps"}, "celebration"),),
         )
@@ -407,6 +410,14 @@ class RecapPlugin(Plugin):
                          ).raise_for_status()
                         return "connected"
                     lines.append(await _check(client, "RomM", romm))
+            if cfg.ra_username or cfg.ra_api_key:
+                if not (cfg.ra_username and cfg.ra_api_key):
+                    lines.append("RetroAchievements: incomplete (needs user name and API key)")
+                else:
+                    async def retroachievements():
+                        await collectors.ra_json(client, cfg, "API_GetUserProfile.php")
+                        return "connected"
+                    lines.append(await _check(client, "RetroAchievements", retroachievements))
         if not lines:
             return {"ok": True, "level": "info", "message": "Nothing to test yet. Fill in at least one account."}
         failed = [ln for ln in lines if not ln.endswith("connected")]

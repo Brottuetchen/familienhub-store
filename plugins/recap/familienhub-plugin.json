@@ -4,10 +4,10 @@
     "de": "Rückblick",
     "en": "Recap"
   },
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": {
-    "de": "Ein Monatsrückblick pro Person als Story (wie bei Musikdiensten zum Jahresende): Serien und Filme aus Jellyfin, Musik aus ListenBrainz, Hörbücher aus Audiobookshelf, Podcasts über Nextcloud, Fotos aus Immich, Spielzeiten aus ES-DE und Cover aus RomM, dazu Ausschnitte aus Navidrome als Soundtrack. Jede Person verbindet ihre eigenen Konten unter „Meine Verbindungen“.",
-    "en": "A monthly recap per person as a story (like a music service's year in review): series and films from Jellyfin, music from ListenBrainz, audiobooks from Audiobookshelf, podcasts through Nextcloud, photos from Immich, game play time from ES-DE and covers from RomM, with clips from Navidrome as the soundtrack. Everybody connects their own accounts under My connections."
+    "de": "Ein Monatsrückblick pro Person als Story (wie bei Musikdiensten zum Jahresende): Serien und Filme aus Jellyfin, Musik aus ListenBrainz, Hörbücher aus Audiobookshelf, Podcasts über Nextcloud, Fotos aus Immich, Spielzeiten aus ES-DE, Cover aus RomM und Erfolge aus RetroAchievements, dazu Ausschnitte aus Navidrome als Soundtrack. Jede Person verbindet ihre eigenen Konten unter „Meine Verbindungen“.",
+    "en": "A monthly recap per person as a story (like a music service's year in review): series and films from Jellyfin, music from ListenBrainz, audiobooks from Audiobookshelf, podcasts through Nextcloud, photos from Immich, game play time from ES-DE, covers from RomM and achievements from RetroAchievements, with clips from Navidrome as the soundtrack. Everybody connects their own accounts under My connections."
   },
   "author": "Familienhub",
   "homepage": "https://github.com/Brottuetchen/familienhub-store",
@@ -260,6 +260,32 @@
       "type": "text",
       "required": false,
       "example": "pc,deck"
+    },
+    {
+      "key": "RECAP_RA_USERNAME",
+      "label": {
+        "de": "RetroAchievements-Benutzername",
+        "en": "RetroAchievements user name"
+      },
+      "help": {
+        "de": "Optional. Zusammen mit dem API-Schlüssel kommen deine Erfolge des Monats in den Rückblick. Leer = keine Erfolge.",
+        "en": "Optional. Together with the API key your achievements of the month go into the recap. Empty = no achievements."
+      },
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "RECAP_RA_API_KEY",
+      "label": {
+        "de": "RetroAchievements-API-Schlüssel",
+        "en": "RetroAchievements API key"
+      },
+      "help": {
+        "de": "retroachievements.org → Einstellungen → Schlüssel → Web-API-Schlüssel.",
+        "en": "retroachievements.org → Settings → Keys → Web API key."
+      },
+      "type": "password",
+      "required": false
     }
   ],
   "pages": [
@@ -280,7 +306,9 @@
     "m.media-amazon.com",
     "artworks.thetvdb.com",
     "store.steampowered.com",
-    "cdn.cloudflare.steamstatic.com"
+    "cdn.cloudflare.steamstatic.com",
+    "retroachievements.org",
+    "media.retroachievements.org"
   ],
   "capabilities": []
 }
