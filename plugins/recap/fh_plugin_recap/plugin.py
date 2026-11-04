@@ -4,7 +4,7 @@ What it does:
 
 - Every month (scheduled job) it builds, for each person who connected at least one source in *More -> My
   connections*, a story page about the previous month: Jellyfin viewing (Playback Reporting), ListenBrainz music,
-  Audiobookshelf, podcasts (Nextcloud GPodder Sync), Immich photos and games (ES-DE play statistics), with a soundtrack from Navidrome.
+  Audiobookshelf, podcasts (Nextcloud GPodder Sync), Immich photos and games (ES-DE play statistics, Steam library), with a soundtrack from Navidrome.
 - The story is a page of the plugin (``pages``): the app opens it through a signed, short-lived link. Posters,
   photos, covers and audio clips are downloaded at build time, so the story loads nothing from other servers.
 - ``POST /api/plugins/recap/build`` builds a month on demand, ``GET /api/plugins/recap/months`` lists the months,
@@ -60,7 +60,8 @@ GLOBAL_KEYS = ("RECAP_JELLYFIN_URL", "RECAP_JELLYFIN_TOKEN", "RECAP_ABS_URL", "R
                "RECAP_ROMM_TOKEN")
 PERSONAL_KEYS = ("RECAP_JELLYFIN_USER", "RECAP_LISTENBRAINZ_USER", "RECAP_LISTENBRAINZ_TOKEN", "RECAP_ABS_TOKEN",
                  "RECAP_IMMICH_KEY", "RECAP_NAVIDROME_USER", "RECAP_NAVIDROME_PASSWORD", "RECAP_NEXTCLOUD_USER",
-                 "RECAP_NEXTCLOUD_APP_PASSWORD", "RECAP_GAMES_DEVICES", "RECAP_RA_USERNAME", "RECAP_RA_API_KEY")
+                 "RECAP_NEXTCLOUD_APP_PASSWORD", "RECAP_GAMES_DEVICES", "RECAP_RA_USERNAME", "RECAP_RA_API_KEY",
+                 "RECAP_STEAM_ID", "RECAP_STEAM_API_KEY")
 
 router = APIRouter(prefix=f"/api/plugins/{PLUGIN_ID}", tags=[PLUGIN_ID])
 
@@ -109,6 +110,7 @@ def load_config(user_id: int, overrides: Optional[Dict[str, str]] = None) -> col
         nextcloud_user=mine("RECAP_NEXTCLOUD_USER"), nextcloud_password=mine("RECAP_NEXTCLOUD_APP_PASSWORD"),
         games_devices=collectors.parse_devices(mine("RECAP_GAMES_DEVICES")),
         ra_username=mine("RECAP_RA_USERNAME"), ra_api_key=mine("RECAP_RA_API_KEY"),
+        steam_id=mine("RECAP_STEAM_ID"), steam_api_key=mine("RECAP_STEAM_API_KEY"),
     )
 
 
@@ -211,7 +213,7 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.4.0",
+            id=PLUGIN_ID, name="Recap", version="1.5.0",
             description="A monthly recap per person: series, music, audiobooks, podcasts, photos and games as a story.",
             capabilities=frozenset(),
             settings=(
@@ -240,6 +242,8 @@ class RecapPlugin(Plugin):
                 Setting("RECAP_GAMES_DEVICES", "Game devices (ES-DE)", required=False),
                 Setting("RECAP_RA_USERNAME", "RetroAchievements user name", required=False),
                 Setting("RECAP_RA_API_KEY", "RetroAchievements API key", secret=True, required=False, type="password"),
+                Setting("RECAP_STEAM_ID", "Steam ID (SteamID64)", required=False),
+                Setting("RECAP_STEAM_API_KEY", "Steam Web API key", secret=True, required=False, type="password"),
             ),
             pages=(Page(PAGE_ID, {"de": "Rückblicke", "en": "Recaps"}, "celebration"),),
         )
@@ -267,6 +271,8 @@ class RecapPlugin(Plugin):
                 build.snapshot_games(uid, load_config(uid), _tz())
             except Exception:  # noqa: BLE001 - never disturbs the builds below
                 pass
+        for uid in ids:  # the daily Steam snapshot (one request per person, only until it worked)
+            await build.snapshot_steam(uid, load_config(uid), _tz())
         for uid in ids:  # a notification that did not go out yet (rate limit, restart in between)
             data = store.read_snapshot(uid, month)
             if data and not data.get("notified") and not data.get("empty") and store.has_story(uid, month):
@@ -418,6 +424,17 @@ class RecapPlugin(Plugin):
                         await collectors.ra_json(client, cfg, "API_GetUserProfile.php")
                         return "connected"
                     lines.append(await _check(client, "RetroAchievements", retroachievements))
+            if cfg.steam_id or cfg.steam_api_key:
+                if not (cfg.steam_id and cfg.steam_api_key):
+                    lines.append("Steam: incomplete (needs SteamID64 and API key)")
+                else:
+                    async def steam():
+                        try:
+                            await collectors.steam_owned(client, cfg)
+                        except LookupError:
+                            return "no games visible (set the profile's game details to public)"
+                        return "connected"
+                    lines.append(await _check(client, "Steam", steam))
         if not lines:
             return {"ok": True, "level": "info", "message": "Nothing to test yet. Fill in at least one account."}
         failed = [ln for ln in lines if not ln.endswith("connected")]
