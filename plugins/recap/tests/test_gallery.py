@@ -25,6 +25,16 @@ def test_sample_story_renders_every_slide_type():
     assert "Rekord" in html and "Steam" in html
 
 
+def test_worst_case_sample_is_at_the_limits():
+    html = gallery.sample_story("neon", "blobs", "bold", 0, {"worst": 1})
+    assert "Donaudampfschifffahrtselektrizitätenhauptbetriebswerkbauunterbeamtengesellschaft" in html
+    assert set(story.VARIANTS) <= set(re.findall(r'<section class="slide s-(\w+)', html))
+    assert html.count("<figure") and "s-photos" in html
+    assert gallery.params(v="worst1.series1")[4] == {"worst": 1, "series": 1} and gallery.params(v="worst2")[4] == {}
+    page = gallery.render_gallery("neon", "blobs", "bold", 0, {"worst": 1}, link)
+    assert "Grenzfall" in page and "Donaudampf" in page and len(cells(page)) >= sum(story.VARIANTS.values())
+
+
 def test_sample_pictures_are_inline_only():
     html = gallery.sample_story("neon", "blobs", "bold", 0, {})
     assert "http://" not in html.replace("http://www.w3.org", "").replace("%3A//www.w3.org", "")
@@ -50,7 +60,7 @@ def test_frames_are_static_and_reuse_the_story_css():
     page = gallery.render_gallery("neon", "blobs", "bold", 0, {}, link)
     assert page.count("<iframe") == len(cells(page))
     doc = gallery.frame_page(gallery.sections("neon", "blobs", "bold", 0)[("total", 0)], "neon", "blobs", "bold", 0)
-    assert "<script" not in doc and "animation:none!important" in doc and 'class="slide on s-total' in doc
+    assert doc.count("<script") == 1 and "recapFit" in doc and "animation:none!important" in doc and 'class="slide on s-total' in doc
     assert story.PAGE.split("</style>")[0].split("<style>")[1] in doc  # the story's own CSS, unchanged
     assert 'class="progress"></div>' in doc  # no progress bars
 
