@@ -458,14 +458,15 @@ async def collect_jellyfin(client, cfg: Config, start, end, img: Path, covers: O
 
 # --- ListenBrainz ----------------------------------------------------------------------------------------------
 
-async def collect_music(client, cfg: Config, start, end, img: Path, tz, covers: Optional[Covers] = None) -> Dict[str, Any]:
+async def collect_music(client, cfg: Config, start, end, img: Path, tz, covers: Optional[Covers] = None, *,
+                        max_pages: int = 40, daily: bool = False) -> Dict[str, Any]:
     covers = covers or Covers()
     user = quote(cfg.listenbrainz_user.strip(), safe="")
     headers = {"Authorization": "Token " + cfg.listenbrainz_token} if cfg.listenbrainz_token else {}
     lo, hi = int(start.timestamp()), int(end.timestamp())
     listens: List[dict] = []
     ts = hi
-    for _ in range(40):  # at most 40,000 listens a month
+    for _ in range(max_pages):  # at most 40,000 listens a month (a year: more pages)
         payload = (await get_json(client, f"{LISTENBRAINZ}/1/user/{user}/listens", headers=headers,
                                   params={"max_ts": ts, "count": 1000}))["payload"]["listens"]
         batch = [x for x in payload if x["listened_at"] >= lo]
@@ -479,11 +480,13 @@ async def collect_music(client, cfg: Config, start, end, img: Path, tz, covers: 
     releases: collections.Counter = collections.Counter()
     release_of: Dict[tuple, str] = {}
     ms_total, days = 0, set()
+    day_ms: collections.Counter = collections.Counter()
     for x in listens:
         md = x["track_metadata"]
         mp = md.get("mbid_mapping") or {}
         ai = md.get("additional_info") or {}
-        ms_total += ai.get("duration_ms") or int((ai.get("duration") or 0) * 1000) or 180000
+        length = ai.get("duration_ms") or int((ai.get("duration") or 0) * 1000) or 180000
+        ms_total += length
         artist = md.get("artist_name") or "?"
         artists[artist] += 1
         tracks[(md.get("track_name") or "?", artist)] += 1
@@ -492,7 +495,9 @@ async def collect_music(client, cfg: Config, start, end, img: Path, tz, covers: 
         for key in (("t", md.get("track_name"), artist), ("a", artist), ("r", md.get("release_name"), artist)):
             if rel and key not in release_of:
                 release_of[key] = rel
-        days.add(dt.datetime.fromtimestamp(x["listened_at"], tz).date())
+        day = dt.datetime.fromtimestamp(x["listened_at"], tz).date()
+        days.add(day)
+        day_ms[day.isoformat()] += length
 
     async def caa(key, file_name):
         rel = release_of.get(key)
@@ -537,7 +542,9 @@ async def collect_music(client, cfg: Config, start, end, img: Path, tz, covers: 
     top_tracks = [{"name": t, "artist": a, "plays": n, "cover": None} for (t, a), n in tracks.most_common(5)]
     await covers.fill([(x, "cover", (lambda x=x: track_cover(x["name"], x["artist"]))) for x in top_tracks]
                       + [(x, "cover", (lambda x=x: artist_cover(x["name"]))) for x in top_artists])
+    extra = {"day_minutes": {d: round(v / 60000, 1) for d, v in sorted(day_ms.items())}} if daily else {}
     return {
+        **extra,
         "new_artists": new_artists[:5],
         "days": sorted(d.isoformat() for d in days),
         "plays": len(listens),
@@ -554,7 +561,8 @@ async def collect_music(client, cfg: Config, start, end, img: Path, tz, covers: 
 
 # --- Audiobookshelf --------------------------------------------------------------------------------------------
 
-async def collect_audiobookshelf(client, cfg: Config, start, end, img: Path, tz, covers: Optional[Covers] = None) -> Dict[str, Any]:
+async def collect_audiobookshelf(client, cfg: Config, start, end, img: Path, tz, covers: Optional[Covers] = None, *,
+                                 daily: bool = False) -> Dict[str, Any]:
     covers = covers or Covers()
     headers = {"Authorization": "Bearer " + cfg.abs_token}
     base = cfg.abs_url
@@ -568,12 +576,15 @@ async def collect_audiobookshelf(client, cfg: Config, start, end, img: Path, tz,
             break
     books = collections.defaultdict(lambda: {"secs": 0, "title": "", "author": ""})
     days = set()
+    day_secs: collections.Counter = collections.Counter()
     for x in sessions:
         if x.get("mediaType") != "book" or not lo <= x["startedAt"] < hi:
             continue
         b = books[x["libraryItemId"]]
         b["secs"] += x["timeListening"] or 0
-        days.add(dt.datetime.fromtimestamp(x["startedAt"] / 1000, tz).date().isoformat())
+        day = dt.datetime.fromtimestamp(x["startedAt"] / 1000, tz).date().isoformat()
+        days.add(day)
+        day_secs[day] += x["timeListening"] or 0
         title = x.get("displayTitle") or ""
         b["title"] = title.replace(".", " ").strip() if re.search(r"\w\.\w", title) else title
         b["author"] = x.get("displayAuthor") or ""
@@ -597,7 +608,8 @@ async def collect_audiobookshelf(client, cfg: Config, start, end, img: Path, tz,
     for x in out:
         x.pop("_id")
     total = sum(b["secs"] for b in books.values())
-    return {"hours": round(total / 3600, 1), "minutes": round(total / 60), "books": out, "finished": len(finished),
+    extra = {"day_minutes": {d: round(v / 60, 1) for d, v in sorted(day_secs.items())}} if daily else {}
+    return {**extra, "hours": round(total / 3600, 1), "minutes": round(total / 60), "books": out, "finished": len(finished),
             "days": sorted(days), "titles_count": len([b for b in books.values() if b["secs"] >= 60])}
 
 
@@ -608,13 +620,15 @@ def _safe_feed_url(url: Any) -> bool:
     return parsed.scheme in ("http", "https") and bool(parsed.hostname)
 
 
-async def collect_podcasts(client, cfg: Config, start, end, img: Path, covers: Optional[Covers] = None) -> Dict[str, Any]:
+async def collect_podcasts(client, cfg: Config, start, end, img: Path, covers: Optional[Covers] = None, *,
+                           tz=None, daily: bool = False) -> Dict[str, Any]:
     covers = covers or Covers()
     auth = base64.b64encode(f"{cfg.nextcloud_user}:{cfg.nextcloud_password}".encode()).decode()
     res = await get_json(client, f"{cfg.nextcloud_url}/index.php/apps/gpoddersync/episode_action",
                          headers={"Authorization": "Basic " + auth, "OCS-APIRequest": "true"},
                          params={"since": int(start.timestamp())})
     pods = collections.defaultdict(lambda: {"secs": 0, "episodes": set()})
+    day_secs: collections.Counter = collections.Counter()
     for a in res.get("actions", []):
         if (a.get("action") or "").upper() != "PLAY":
             continue
@@ -626,6 +640,7 @@ async def collect_podcasts(client, cfg: Config, start, end, img: Path, covers: O
         played = max(0, (a.get("position") or 0) - (a.get("started") or 0))
         p = pods[a["podcast"]]
         p["secs"] += played
+        day_secs[when.astimezone(tz or start.tzinfo).date().isoformat()] += played
         p["episodes"].add(a.get("episode"))
     out = []
     for feed, p in sorted(pods.items(), key=lambda kv: -kv[1]["secs"])[:5]:
@@ -653,7 +668,8 @@ async def collect_podcasts(client, cfg: Config, start, end, img: Path, covers: O
     for x in out:
         x.pop("_image")
     total = sum(p["secs"] for p in pods.values())
-    return {"connected": True, "hours": round(total / 3600, 1), "minutes": round(total / 60),
+    extra = {"day_minutes": {d: round(v / 60, 1) for d, v in sorted(day_secs.items())}} if daily else {}
+    return {**extra, "connected": True, "hours": round(total / 3600, 1), "minutes": round(total / 60),
             "episodes": sum(len(p["episodes"]) for p in pods.values()), "podcasts": out}
 
 
@@ -669,12 +685,13 @@ def _channel_head(raw: bytes):
 
 # --- Immich ----------------------------------------------------------------------------------------------------
 
-async def collect_immich(client, cfg: Config, start, end, img: Path) -> Dict[str, Any]:
+async def collect_immich(client, cfg: Config, start, end, img: Path, *, per_month: bool = False,
+                         max_pages: int = 60) -> Dict[str, Any]:
     headers = {"x-api-key": cfg.immich_key, "Accept": "application/json"}
     base = cfg.immich_url + "/api"
     items: List[dict] = []
     page: Optional[int] = 1
-    while page and page <= 60:
+    while page and page <= max_pages:
         res = await get_json(client, base + "/search/metadata", headers=headers, body={
             "takenAfter": start.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
             "takenBefore": end.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -705,6 +722,19 @@ async def collect_immich(client, cfg: Config, start, end, img: Path) -> Dict[str
         cand = cams[len(cams) // 2]
         if cand not in picks:
             picks.append(cand)
+    if per_month:  # the annual recap: one picture from each month (a favourite, else the middle of its busiest day)
+        picks = []
+        for number in range(1, 13):
+            month_days = {d: v for d, v in by_day.items() if d[5:7] == f"{number:02d}"}
+            if not month_days:
+                continue
+            favs = [a for v in month_days.values() for a in v if a.get("isFavorite")]
+            if favs:
+                picks.append(favs[len(favs) // 2])
+                continue
+            busiest = max(month_days.values(), key=len)
+            cams = [a for a in busiest if (a.get("exifInfo") or {}).get("make")] or busiest
+            picks.append(cams[len(cams) // 2])
     picks.sort(key=lambda a: a["localDateTime"])
     highlights = []
     for a in picks:
@@ -723,6 +753,8 @@ async def collect_immich(client, cfg: Config, start, end, img: Path) -> Dict[str
         "countries": [n for n, _ in countries.most_common()],
         "days_with_photos": len({a["localDateTime"][:10] for a in items}),
         "highlights": highlights,
+        **({"month_counts": {f"{n:02d}": sum(1 for a in items if a["localDateTime"][5:7] == f"{n:02d}") for n in range(1, 13)}}
+           if per_month else {}),
     }
 
 
@@ -941,6 +973,38 @@ def games_delta(base: Optional[Dict[str, Any]], final: Dict[str, Any], start, en
     return out
 
 
+def games_year_delta(base: Optional[Dict[str, Any]], first: Optional[Dict[str, Any]], final: Dict[str, Any], start, end):
+    """``(played, approx)`` like ``games_delta`` for a whole year. With a baseline from before the year the result is exact.
+    Without one (the snapshots only began during the year) ``first`` is the earliest snapshot inside the year: what grew
+    since then is exact, and a game last played in the year *before* that snapshot adds the time the snapshot already
+    held (an upper bound, so ``approx``). A device without any snapshot counts a game by its last-played date and its
+    whole cumulative time (also approximate)."""
+    if base is not None:
+        return games_delta(base, final, start, end), False
+    approx = False
+    out: Dict[str, Dict[str, Any]] = {}
+    for device, games in final.items():
+        ref = (first or {}).get(device)
+        for key, now in games.items():
+            old = (ref or {}).get(key)
+            if ref is None:
+                if not _played_between(now.get("lastplayed"), start, end) or now["playtime"] <= 0:
+                    continue
+                seconds, launches, approx = now["playtime"], now["playcount"], True
+            else:
+                pre = old["playtime"] if old and _played_between(old.get("lastplayed"), start, end) else 0
+                seconds = now["playtime"] - (old["playtime"] if old else 0) + pre
+                launches = max(0, now["playcount"] - (old["playcount"] if old else 0)) + (old["playcount"] if pre else 0)
+                if seconds <= 0:
+                    continue
+                approx = approx or pre > 0
+            item = out.setdefault(key, {"seconds": 0, "sessions": 0, "new": True})
+            item["seconds"] += min(seconds, int((end - start).total_seconds()))
+            item["sessions"] += launches
+            item["new"] = item["new"] and old is None
+    return out, approx
+
+
 # --- Steam library (Web API, the person's own SteamID64 and API key) --------------------------------------------
 # ``GetOwnedGames`` also only knows cumulative play time (in minutes, all devices), so it gets the same daily
 # snapshots as ES-DE (``store.write_steam``). The key travels as a query parameter (that is how the API works), so
@@ -994,6 +1058,33 @@ def steam_delta(base: Optional[Dict[str, Any]], final: Dict[str, Any], start, en
     return out
 
 
+def steam_year_delta(base: Optional[Dict[str, Any]], first: Optional[Dict[str, Any]], final: Dict[str, Any], start, end, as_of):
+    """``(played, approx)`` like ``steam_delta`` for a whole year: exact with a baseline from before the year. Without one
+    ``first`` (the earliest snapshot inside the year) gives the growth since then, and an app last played in the year
+    before that snapshot adds its ``playtime_forever`` at that time (an upper bound: ``approx``). With no snapshot at all
+    it is ``playtime_forever`` of the apps whose last-played date lies in the year."""
+    if base is not None:
+        return steam_delta(base, final, start, end, as_of), False
+    cap = (end - start).total_seconds() / 60
+    approx = False
+    out: Dict[str, Dict[str, Any]] = {}
+    for app_id, now in final.items():
+        old = (first or {}).get(app_id)
+        in_year = start.timestamp() <= now["last_played"] < end.timestamp()
+        if first is None:
+            if not in_year:
+                continue
+            minutes, pre = now["forever"], now["forever"]
+        else:
+            before = old["forever"] if old else 0
+            pre = before if old and start.timestamp() <= old["last_played"] < end.timestamp() else 0
+            minutes = now["forever"] - before + pre
+        if 0 < minutes <= cap and now["name"]:
+            approx = approx or pre > 0
+            out[app_id] = {"name": now["name"], "minutes": minutes, "new": not old or old["forever"] == 0}
+    return out, approx
+
+
 def title_key(name: str) -> str:
     """A title as one comparable string: no case, edition suffix, leading article, spaces or punctuation."""
     text = EDITION_RE.sub("", str(name)).casefold()
@@ -1027,14 +1118,20 @@ def merge_steam(rows: List[Dict[str, Any]], played: Dict[str, Dict[str, Any]]) -
 async def collect_games(client, cfg: Config, start, end, img: Path, base: Optional[Dict[str, Any]],
                         final: Optional[Dict[str, Any]] = None, covers: Optional[Covers] = None,
                         steam: Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Any] = (None, None, None),
-                        errors: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+                        errors: Optional[Dict[str, str]] = None, year: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The games of the month. ``final`` is the state at the end of the month (the first snapshot of the next month),
     else the current device files. ``steam`` is ``(baseline, end state, time of the end state)`` of the Steam library
-    (the end state None = ask Steam now). A failing Steam request is noted in ``errors`` and leaves the ES-DE games."""
+    (the end state None = ask Steam now). A failing Steam request is noted in ``errors`` and leaves the ES-DE games.
+    ``year`` (annual recap) is ``{"first": earliest ES-DE snapshot in the year, "steam_first": same for Steam, "since": its day}``:
+    the result then also says whether the numbers are ``approx`` (see ``games_year_delta``)."""
     covers = covers or Covers()
     if final is None and cfg.games_devices:
         final = read_games(cfg.games_dir, cfg.games_devices)
-    played = games_delta(base, final, start, end) if final else {}
+    approx = False
+    if year is None:
+        played = games_delta(base, final, start, end) if final else {}
+    else:
+        played, approx = games_year_delta(base, year.get("first"), final, start, end) if final else ({}, False)
     rows = []
     for key, v in played.items():
         system, rel = key.split("/", 1)
@@ -1046,7 +1143,12 @@ async def collect_games(client, cfg: Config, start, end, img: Path, base: Option
         try:
             if steam_final is None:
                 steam_final, steam_time = await steam_owned(client, cfg), dt.datetime.now(start.tzinfo)
-            steam_played = steam_delta(steam_base, steam_final, start, end, steam_time or dt.datetime.now(start.tzinfo))
+            when = steam_time or dt.datetime.now(start.tzinfo)
+            if year is None:
+                steam_played = steam_delta(steam_base, steam_final, start, end, when)
+            else:
+                steam_played, steam_approx = steam_year_delta(steam_base, year.get("steam_first"), steam_final, start, end, when)
+                approx = approx or steam_approx
         except Exception as exc:  # noqa: BLE001 - the ES-DE games (if any) are still worth a story
             if not final:
                 raise
@@ -1093,10 +1195,13 @@ async def collect_games(client, cfg: Config, start, end, img: Path, base: Option
     systems: collections.Counter = collections.Counter()
     for x in rows:
         systems[x["system"]] += x["minutes"]
-    return {"hours": round(sum(x["minutes"] for x in rows) / 60, 1), "minutes": sum(x["minutes"] for x in rows),
-            "sessions": sum(x["sessions"] for x in rows), "games_count": len(rows), "systems_count": len(systems),
-            "systems": [{"name": n, "minutes": m} for n, m in systems.most_common()],
-            "top_system": systems.most_common(1)[0][0] if systems else None, "games": top}
+    result = {"hours": round(sum(x["minutes"] for x in rows) / 60, 1), "minutes": sum(x["minutes"] for x in rows),
+              "sessions": sum(x["sessions"] for x in rows), "games_count": len(rows), "systems_count": len(systems),
+              "systems": [{"name": n, "minutes": m} for n, m in systems.most_common()],
+              "top_system": systems.most_common(1)[0][0] if systems else None, "games": top}
+    if year is not None:
+        result.update(approx=approx, approx_since=year.get("since"))
+    return result
 
 
 # --- RetroAchievements (Web API, the person's own user name and API key) ----------------------------------------

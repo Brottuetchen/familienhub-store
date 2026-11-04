@@ -21,6 +21,16 @@ A source whose server address is empty, or for which a person entered nothing, i
 
 The look follows a design engine with a **memory**: palette, background shape, type style, layout variant and text of every slide are chosen per person and month, and exclude what the person's previous months used, so no month looks like the last one. Special slides appear when something special happened (new record, finished series, new artists, a trip, a 7-day streak).
 
+## Annual recap (Jahresrückblick)
+
+On **1 January** the scheduler also builds, once per person, the recap of the year that just ended (it waits for December's monthly recap so the year can use its figures; same rules as the months: one build at a time, retries after 6 hours, at most 3 times, one push "Dein Jahresrückblick 2026 ist da"). It is built on demand with `POST /api/plugins/recap/build?year=2025` (finished years only, `force=true`/`redesign=true` as for months) and stored next to the months (`<user>/2026.json`, `<user>/2026/`). The archive lists "Jahresrückblick 2026" above the months, `GET .../months` has a `years` list, `GET .../markdown/2026` returns the Obsidian note.
+
+The collectors run over the whole year (1 Jan to 31 Dec in the hub's timezone). The slides, in order (each is skipped without data): intro "Dein Jahr 2026", total hours (media + games), the year curve (hours per month, strongest and quietest month), top 5 per area (series, films, artists, songs, audiobooks, podcasts, games), records (longest couch day, longest gaming marathon, most-listened week), discoveries (artists heard for the first time, series new in the top lists compared with earlier snapshots), photos (one per month, trip), RetroAchievements (count, points, hardest achievement, awards), month ranking (which month had which focus) and the outro as a year receipt. Hours per month come from the monthly snapshots where they exist, else from the year's own daily data (video, music, audiobooks, podcasts; games only from snapshots).
+
+**Game time is approximate before the snapshots began.** ES-DE and Steam only know cumulative play time, so a year is a difference of daily snapshots (`games/`, `steam/`). Snapshots exist only from early November 2026: a snapshot from before the year gives exact numbers; otherwise the growth since the first snapshot of the year is exact, and an app or game last played in the year *before* that snapshot adds the play time the snapshot already held (an upper bound; for Steam this is `playtime_forever`). Such a year has `games.approx: true` and the story says "Spielzeit vor November geschätzt". The first-time series are only named when earlier snapshots exist; artists come from ListenBrainz's all-time statistics.
+
+The year has its own festive palettes (`silvester`, `konfetti`, `goldregen`), slide types, layout variants and headline texts (`year.py`, kept apart so no monthly design changes) and its own design memory: it avoids what the previous year used. The design preview (admins) has a "Rückblick: Monat / Jahr" toggle.
+
 ## Covers
 
 Every item the story shows (series, films, top tracks, top artists, books, podcasts) gets a picture, found through a fallback chain that stops at the first hit. Nothing here can fail a build: a step that errors or finds nothing just hands over to the next one.
