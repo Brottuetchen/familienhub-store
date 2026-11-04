@@ -105,6 +105,53 @@ def sample_data():
             "games": ga, "retroachievements": ra, "totals": totals, "soundtrack": [], "errors": {}}
 
 
+LONG = ["Die unglaublich lange Geschichte vom Leuchtturmwärter und der Donaudampfschifffahrtsgesellschaft",
+        "Außergewöhnliche Abenteuer des Hauptmanns Freiherr von Münchhausen-Schwarzenberg", "Wo die wilden Kerle wohnen und andere Weltuntergänge",
+        "Räuber Hotzenplotz und die Mondrakete im Hinterhof", "Kommissar Dobermann ermittelt: Der Fall des verschwundenen Rosenkavaliers",
+        "Zwischen Rhabarberschorle und Weltraumschrott", "Donaudampfschifffahrtselektrizitätenhauptbetriebswerkbauunterbeamtengesellschaft",
+        "Lieder aus dem Hinterland: Gesamtaufnahme in drei Akten"]
+
+
+def long_name(i):
+    return LONG[i % len(LONG)]
+
+
+def worst_data():
+    """The same month at its limits: every list at its maximum length, long German titles (and one word that cannot break),
+    big numbers, many photos. The layouts must hold even this without anything scrolling or running off the slide."""
+    d = sample_data()
+    L = long_name
+    jf, mu, ab, pc, ph, ga, ra = (d[k] for k in ("jellyfin", "music", "audiobooks", "podcasts", "photos", "games", "retroachievements"))
+    jf["series"] = [{"name": L(i), "poster": poster(L(i)), "seasons": list(range(1, 10 - i)), "episodes": 340 - i * 31, "hours": 276.5 - i * 20} for i in range(5)]
+    jf.update(series_hours=1234.5, episodes=1999, series_count=88, movies_count=88, movie_hours=222.5,
+              movies=[{"name": L(i + 2), "poster": poster(L(i + 2)), "year": 1990 + i} for i in range(8)],
+              finished_series=[L(i) for i in range(4)])
+    jf["best_day"] = {"date": "2026-10-10", "hours": 18.4, "titles": [L(0), L(1)]}
+    jf["night_owl"] = {"title": L(5) + " - s02e05 - " + L(3), "time": "02:14", "date": "2026-10-17"}
+    mu.update(plays=12612, minutes=41840, artists_count=388,
+              top_artists=[{"name": L(i), "plays": 1096 - i, "cover": square(L(i))} for i in range(5)],
+              top_tracks=[{"name": L(i + 3), "artist": L(i + 1), "plays": 321 - i, "cover": square(L(i + 3))} for i in range(5)],
+              new_artists=[{"name": L(i + 4), "plays": 58 - i} for i in range(5)])
+    ab["books"] = [{"title": L(i), "author": L(i + 1), "hours": 111.2 - i, "cover": square(L(i)), "finished": i % 2 == 0} for i in range(5)]
+    ab.update(hours=225.0, titles_count=15, finished=3)
+    pc["podcasts"] = [{"title": L(i + 1), "episodes": 112 - i, "hours": 55.6 - i, "cover": square(L(i + 1))} for i in range(5)]
+    pc.update(hours=133.5, episodes=331)
+    ph.update(total=2480, photos=2260, videos=220, places=[{"name": L(i + 5), "count": 112 - i} for i in range(5)])
+    ph["highlights"] = [{"img": photo(f"Foto {i}"), "date": f"2026-10-{(i * 2) % 28 + 1:02d}", "city": L(i + 5)} for i in range(12)]
+    ph["place_geo"] = [{"name": L(i + 5), "lat": 38.7 + i, "lon": -9.1 + i, "country": "Vereinigte Arabische Emirate", "count": 31 + i} for i in range(3)] + ph["place_geo"][:1]
+    ga["games"] = [{"name": L(i), "system": "Nintendo Entertainment System Classic Edition", "minutes": 4960 - i * 400, "sessions": 114 - i,
+                    "cover": poster(L(i)), "new": i in (1, 2)} for i in range(8)]
+    ga.update(games_count=88, systems_count=14, top_system="Nintendo Entertainment System Classic Edition", hours=1132.5, minutes=51950, sessions=3200)
+    ra.update(total=3700, hardcore=3000, points=41200, games_count=33)
+    ra["rarest"] = [{"title": L(i), "game": L(i + 1), "points": 150 - i, "badge": square(L(i))} for i in range(6)]
+    ra["games"] = [{"name": L(i + 2), "icon": square(L(i + 2)), "console": "Nintendo Entertainment System", "count": 119 - i} for i in range(5)]
+    ra["awards"] = [{"title": L(i + 3), "icon": square(L(i + 3)), "console": "Super Nintendo Entertainment System", "kind": k, "hardcore": i % 2 == 0}
+                    for i, k in enumerate(("mastered", "beaten", "completed", "beaten_soft"))]
+    d["totals"] = {"media_hours": 3180.2, "series_hours": 1247.0, "movie_hours": 111.5, "music_hours": 330.7, "audiobook_hours": 225.0,
+                   "podcast_hours": 133.5, "games_hours": 1132.5}
+    return d
+
+
 def sample_history():
     """Three earlier months: enough for a record and a "home" for the trip slide."""
     home = [{"name": "Musterstadt", "lat": 50.11, "lon": 8.68, "country": "Deutschland", "count": 120}]
@@ -117,9 +164,9 @@ def sample_prev():
             "audiobooks": {"minutes": 700}, "podcasts": {"minutes": 0}, "photos": {"total": 110}, "games": {"minutes": 2400}}
 
 
-def sample_story_input():
-    """``(data, prev, history)`` for ``story.render``; the caller adds ``design``."""
-    data, history = sample_data(), sample_history()
+def sample_story_input(worst=False):
+    """``(data, prev, history)`` for ``story.render``; the caller adds ``design``. ``worst``: the month at its limits."""
+    data, history = (worst_data() if worst else sample_data()), sample_history()
     data["highlights"] = story.highlights(data, history)
     data["design"] = {"lead": "trip"}
     return data, sample_prev(), history

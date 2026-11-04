@@ -50,6 +50,7 @@ VARIANTS = {"intro": 3, "total": 3, "series": 3, "binge": 2, "movies": 2, "music
 # Added after the first releases: chosen from an own random stream, so the choices for all other slides stay as they were
 LATE_SLIDES = ("games", "ra")
 GAME_MARATHON_MINUTES = 600
+MAX_POSTERS, MAX_PHOTOS = 6, 6  # posters in the film grid, pictures on the photo slide: two rows of three, whatever the data holds
 KICKERS = {
     "intro": ["Dein Rückblick", "Das war dein", "Zurückgespult", "Zeit für den Rückblick"],
     "total": ["Insgesamt", "Alles zusammen", "Unterm Strich", "Die große Zahl"],
@@ -385,11 +386,11 @@ def render(data, prev, history):
         dl = delta(jf["movie_hours"], P("jellyfin", "movie_hours"))
         if V["movies"] == 1:
             fan = "".join(f'<figure style="--i:{k};--n:{len(jf["movies"][:5])}">{img(x.get("poster"), "", x["name"])}</figure>' for k, x in enumerate(jf["movies"][:5]))
-            names = ", ".join(e(x["name"]) for x in jf["movies"])
+            names = ", ".join(e(x["name"]) for x in jf["movies"][:MAX_POSTERS])
             add("movies", t["movie_hours"], f'{head}<div class="fan">{fan}</div><p class="lead">{names}</p>{dl}')
         else:
             grid = "".join(f'<figure>{img(x.get("poster"), "", x["name"])}<figcaption>{e(x["name"])}{year(x)}'
-                           f'</figcaption></figure>' for x in jf["movies"])
+                           f'</figcaption></figure>' for x in jf["movies"][:MAX_POSTERS])
             add("movies", t["movie_hours"], f'{head}<div class="posters">{grid}</div>{dl}')
 
     # Music
@@ -444,10 +445,10 @@ def render(data, prev, history):
         info = (f'<p class="lead">{ph["photos"]} Fotos, {ph["videos"]} Videos.'
                 f'{" Am meisten am <b>" + de_date(dt.date.fromisoformat(bd["date"])) + "</b>." if bd else ""}</p>'
                 f'{f"<p class=sub>Unterwegs in {places}</p>" if places else ""}')
-        hs = ph.get("highlights") or []
+        hs = (ph.get("highlights") or [])[:MAX_PHOTOS]
         cap = lambda x: f'{dt.date.fromisoformat(x["date"]).day}.{m}.{" · " + e(x["city"]) if x.get("city") else ""}'  # noqa: E731
         if V["photos"] == 1 and hs:
-            pol = "".join(f'<figure style="--r:{((k * 53) % 22) - 11}deg;--x:{(k % 3) * 31}%;--y:{(k // 3) * 46}%">'
+            pol = "".join(f'<figure style="--r:{((k * 53) % 22) - 11}deg;--y:{(k * 5) % 11 - 5}px">'
                           f'<img src="{e(x["img"])}" alt=""><figcaption>{cap(x)}</figcaption></figure>' for k, x in enumerate(hs))
             body = f'<div class="polas">{pol}</div>'
         elif V["photos"] == 2 and hs:
@@ -610,10 +611,21 @@ def render(data, prev, history):
         html_slides.append(f'<section class="slide s-{key} v{V.get(key, 0)}"{attr}>{bd}<div class="inner">{inner}</div>{label}</section>')
     bars = "".join("<i><b></b></i>" for _ in slides)
     sound = '<button class="snd" aria-label="Ton an/aus">🔊</button>' if clips else ""
-    return (PAGE.replace("{{TITLE}}", f"Rückblick {mname} {y}").replace("{{BARS}}", bars)
+    return (PAGE.replace("{{FIT}}", FIT).replace("{{TITLE}}", f"Rückblick {mname} {y}").replace("{{BARS}}", bars)
             .replace("{{SLIDES}}", "\n".join(html_slides)).replace("{{SOUND}}", sound)
             .replace("{{BODY}}", f'shape-{d["shape"]} type-{d["type"]}'))
 
+
+# Safety net against scrolling: a slide whose content is taller (or wider) than its box is scaled down until it fits, never scrolled.
+# The content is laid out at 1/s of the width and scaled back, so only its size changes, not its look. Shared with the design preview.
+FIT_JS = """(()=>{const FLOOR=.4;
+function fit(){document.querySelectorAll('.slide .inner').forEach(n=>{let s=1;
+ for(let k=0;k<8;k++){n.style.setProperty('--fit',s);const h=n.scrollHeight,H=n.clientHeight,w=n.scrollWidth,W=n.clientWidth;
+  const f=Math.min(h>H+1?H/h:1,w>W+1?W/w:1);if(f>=1||s<=FLOOR)break;s=Math.max(FLOOR,s*f*.99)}})}
+let q;const later=()=>{cancelAnimationFrame(q);q=requestAnimationFrame(fit)};
+window.recapFit=fit;fit();addEventListener('resize',later);addEventListener('load',later);addEventListener('load',later,true);
+if(document.fonts)document.fonts.ready.then(later)})();"""
+FIT = f"<script>{FIT_JS}</script>"
 
 PAGE = """<!doctype html>
 <html lang="de"><head><meta charset="utf-8">
@@ -623,10 +635,10 @@ PAGE = """<!doctype html>
 <style>
 :root{--ink:#fff;--font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;--head:var(--font)}
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);overflow:hidden;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);overflow:hidden;-webkit-tap-highlight-color:transparent;-webkit-hyphens:auto;hyphens:auto}
 .type-serif{--head:ui-serif,Georgia,"Times New Roman",serif}
 .type-caps .giant,.type-caps .title,.type-caps .big small{text-transform:uppercase;letter-spacing:-.01em}
-.stage{position:fixed;inset:0;max-width:520px;margin:0 auto}
+.stage{position:fixed;inset:0;max-width:520px;margin:0 auto;container:stage/size}
 .slide{position:absolute;inset:0;display:flex;align-items:center;opacity:0;pointer-events:none;transition:opacity .45s ease;overflow:hidden;background:var(--bg)}
 .slide.on{opacity:1;pointer-events:auto}
 .shape-blobs .slide::before{content:"";position:absolute;width:140vmax;height:140vmax;border-radius:46%;top:-70vmax;right:-80vmax;background:var(--blob);opacity:.55;animation:spin 26s linear infinite}
@@ -642,7 +654,9 @@ html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);o
 @keyframes drift{to{transform:translate(12vmax,10vmax)}}
 .bd{position:absolute;inset:-40px;background-size:cover;background-position:center;filter:blur(28px) saturate(1.4) brightness(.5);transform:scale(1.15);z-index:0}
 .slide:has(.bd)::before,.slide:has(.bd)::after{display:none}
-.inner{position:relative;z-index:1;width:100%;padding:72px 26px 52px;max-height:100%;overflow-y:auto}
+.inner{position:relative;z-index:1;flex:none;width:calc(100% / var(--fit));max-height:calc(100% / var(--fit));padding:72px 26px 52px;overflow:hidden;overflow-wrap:anywhere;
+ --fit:1;transform:scale(var(--fit));transform-origin:0 50%}
+.ln,.title,.lead,.foot,.sub,.list b,.list span,.tracks b,.tracks span,.ranks span,.posters figcaption,.podium figcaption,.badges figcaption,.tops b,.receipt li b{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;-webkit-line-clamp:var(--ln,1)}
 .slide.on .inner>*{animation:rise .7s cubic-bezier(.2,.8,.2,1) both}
 .slide.on .inner>*:nth-child(2){animation-delay:.08s}.slide.on .inner>*:nth-child(3){animation-delay:.16s}
 .slide.on .inner>*:nth-child(4){animation-delay:.24s}.slide.on .inner>*:nth-child(5){animation-delay:.32s}
@@ -654,11 +668,11 @@ html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);o
 .outline{font-family:var(--head);font-size:clamp(6rem,38vw,11rem);font-weight:900;line-height:.8;color:transparent;-webkit-text-stroke:2px var(--accent);opacity:.9;margin-bottom:10px;letter-spacing:-.05em}
 .big{font-family:var(--head);font-size:clamp(3.6rem,19vw,6rem);font-weight:900;line-height:1;letter-spacing:-.045em;color:var(--accent);margin:4px 0 12px}
 .big small{font-family:var(--font);font-size:.28em;letter-spacing:0;color:var(--ink);font-weight:800}
-.title{font-family:var(--head);font-size:clamp(1.9rem,8.5vw,2.7rem);font-weight:900;line-height:1.05;letter-spacing:-.03em;margin:6px 0 10px}
-.lead{font-size:1.12rem;line-height:1.45;max-width:32ch}
+.title{--ln:2;padding-bottom:.08em;font-family:var(--head);font-size:clamp(1.9rem,8.5vw,2.7rem);font-weight:900;line-height:1.05;letter-spacing:-.03em;margin:6px 0 10px}
+.lead{--ln:4;font-size:1.12rem;line-height:1.45;max-width:32ch}
 .lead b,.list b,.foot b{color:var(--accent)}
-.sub{margin:22px 0 8px;font-weight:800;font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;opacity:.85}
-.foot{margin-top:16px;font-size:.95rem;opacity:.9;line-height:1.4}
+.sub{--ln:2;margin:22px 0 8px;font-weight:800;font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;opacity:.85}
+.foot{--ln:3;margin-top:16px;font-size:.95rem;opacity:.9;line-height:1.4}
 .foot a{color:var(--ink)}
 .mini{font-size:1.05rem;margin-top:6px}.mini b{color:var(--accent);font-size:1.3rem}
 .delta{display:inline-block;margin-top:18px;padding:6px 12px;border-radius:99px;background:rgba(0,0,0,.28);font-size:.85rem;font-weight:700}
@@ -674,39 +688,41 @@ html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);o
 .legend{list-style:none;margin-top:14px;display:grid;gap:6px}
 .legend li{display:flex;align-items:center;gap:8px;font-weight:700}.legend b{margin-left:auto}
 .legend i{width:12px;height:12px;border-radius:3px;background:var(--accent);opacity:var(--o)}
-.poster{display:block;height:min(36vh,300px);aspect-ratio:2/3;object-fit:cover;border-radius:10px;box-shadow:0 18px 40px rgba(0,0,0,.45);margin:4px 0 18px}
+.poster{display:block;height:min(27vh,300px);height:min(27cqh,300px);max-width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:10px;box-shadow:0 18px 40px rgba(0,0,0,.45);margin:4px 0 18px}
 .poster.square{aspect-ratio:1}
 .tilt{transform:rotate(-3deg)}
-.list{list-style:none;margin-top:18px;display:grid;gap:10px;counter-reset:n 1}
-.list li{counter-increment:n;display:grid;grid-template-columns:28px 1fr;column-gap:8px;line-height:1.25}
+.list{list-style:none;margin-top:18px;display:grid;grid-template-columns:minmax(0,1fr);gap:10px;counter-reset:n 1}
+.list li{counter-increment:n;display:grid;grid-template-columns:28px minmax(0,1fr);column-gap:8px;line-height:1.25}
 .list li::before{content:counter(n);grid-row:span 2;font-weight:900;font-size:1.3rem;opacity:.6}
 .list.plain{counter-reset:n 0}
-.list span,.tracks span{font-size:.88rem;opacity:.85}
-.tracks{list-style:none;display:grid;gap:10px}
-.tracks li{display:grid;grid-template-columns:48px 1fr;column-gap:12px;align-items:center;line-height:1.25}
+.list span,.tracks span{--ln:2;font-size:.88rem;opacity:.85}.list b,.tracks b,.list li,.tracks li{min-width:0}.thumbs span,.tracks span{--ln:1}
+.tracks{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.tracks li{display:grid;grid-template-columns:48px minmax(0,1fr);column-gap:12px;align-items:center;line-height:1.25}
 .tracks img,.tracks .cv{grid-row:span 2;width:48px;height:48px;border-radius:6px;object-fit:cover;background:rgba(255,255,255,.18)}
-.ranks{list-style:none;display:grid;gap:4px}
-.ranks li{display:grid;grid-template-columns:44px 1fr auto;align-items:baseline;gap:8px}
+.ranks{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
+.ranks li{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:baseline;gap:8px}
 .ranks b{font-family:var(--head);font-size:2.4rem;font-weight:900;color:var(--accent);line-height:1}
-.ranks span{font-size:1.25rem;font-weight:800;line-height:1.15}.ranks em{font-style:normal;opacity:.8;font-weight:700}
+.ranks span{--ln:2;min-width:0;font-size:1.25rem;font-weight:800;line-height:1.15}.ranks em{font-style:normal;opacity:.8;font-weight:700}
 .ranks li:first-child span{font-size:1.6rem}
 .eq{display:flex;gap:5px;align-items:flex-end;height:70px;margin:6px 0 4px}
 .eq i{flex:1;background:var(--accent);border-radius:3px;height:30%;animation:eq .9s ease-in-out var(--d) infinite alternate}
 @keyframes eq{to{height:100%}}
 .posters{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.posters figure{justify-self:center;width:100%;max-width:calc(20vh * 2 / 3);max-width:calc(20cqh * 2 / 3)}
 .posters img,.posters .ph{display:block;width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px;background:rgba(255,255,255,.15);box-shadow:0 10px 24px rgba(0,0,0,.35)}
-.posters figcaption{font-size:.72rem;line-height:1.2;margin-top:4px;font-weight:600}
-.fan{position:relative;height:min(34vh,260px);margin:10px 0 18px}
-.fan figure{position:absolute;left:50%;bottom:0;width:38%;transform-origin:50% 120%;transform:translateX(-50%) rotate(calc((var(--i) - (var(--n) - 1) / 2) * 11deg))}
-.fan img,.fan .ph{display:block;width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px;box-shadow:0 12px 26px rgba(0,0,0,.5);background:rgba(255,255,255,.15)}
+.posters figcaption{--ln:2;font-size:.72rem;line-height:1.2;margin-top:4px;font-weight:600}
+.fan{position:relative;height:min(31vh,285px);height:min(31cqh,285px);margin:10px 0 0}
+.fan figure{position:absolute;left:50%;bottom:16%;height:84%;aspect-ratio:2/3;transform-origin:50% 120%;transform:translateX(-50%) rotate(calc((var(--i) - (var(--n) - 1) / 2) * 11deg))}
+.fan img,.fan .ph{display:block;width:100%;height:100%;object-fit:cover;border-radius:8px;box-shadow:0 12px 26px rgba(0,0,0,.5);background:rgba(255,255,255,.15)}
 .podium{display:grid;grid-template-columns:1fr 1.2fr 1fr;align-items:end;gap:8px;margin-top:16px}
 .podium figure{text-align:center;position:relative}
 .podium .p1{order:2}.podium .p2{order:1}.podium .p3{order:3}
-.podium img,.podium .ph{display:block;width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px;box-shadow:0 10px 24px rgba(0,0,0,.4);background:rgba(255,255,255,.15)}
+.podium img,.podium .ph{display:block;margin:0 auto;height:21vh;height:21cqh;width:auto;max-width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px;box-shadow:0 10px 24px rgba(0,0,0,.4);background:rgba(255,255,255,.15)}
 .podium b{position:absolute;top:-14px;left:50%;transform:translateX(-50%);width:30px;height:30px;border-radius:50%;background:var(--accent);color:#111;font-weight:900;line-height:30px}
-.podium figcaption{font-size:.75rem;font-weight:700;margin-top:6px;line-height:1.2}
+.podium .p1 img,.podium .p1 .ph{height:25vh;height:25cqh}
+.podium figcaption{--ln:3;font-size:.75rem;font-weight:700;margin-top:6px;line-height:1.2}
 .podium figcaption span{display:block;opacity:.75;font-weight:600}
-.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:16px}
+.cal{width:min(100%,calc((36vh - 45px) * 7 / 6 + 30px));width:min(100%,calc((36cqh - 45px) * 7 / 6 + 30px));display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:16px}
 .cal>b{font-size:.68rem;text-align:center;opacity:.7}
 .cal i{aspect-ratio:1;border-radius:6px;background:color-mix(in srgb,var(--accent) calc(var(--a) * 100%),rgba(255,255,255,.08));position:relative}
 .cal i span{position:absolute;inset:0;display:grid;place-items:center;font-size:.62rem;font-style:normal;font-weight:700;opacity:.75;color:#fff;mix-blend-mode:difference}
@@ -716,33 +732,34 @@ html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);o
 .grid figure{position:relative}
 .grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block}
 .grid figcaption,.hero figcaption{position:absolute;left:6px;bottom:5px;font-size:.66rem;font-weight:700;text-shadow:0 1px 3px #000}
-.polas{position:relative;height:min(42vh,330px);margin-top:14px}
-.polas figure{position:absolute;left:var(--x);top:var(--y);width:40%;background:#fafafa;padding:6px 6px 22px;border-radius:3px;box-shadow:0 10px 24px rgba(0,0,0,.45);transform:rotate(var(--r))}
+.polas{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 8px;padding:18px 0;margin-top:0}
+.polas figure{position:relative;justify-self:center;width:100%;max-width:19vh;max-width:19cqh;top:var(--y);background:#fafafa;padding:6px 6px 22px;border-radius:3px;box-shadow:0 10px 24px rgba(0,0,0,.45);transform:rotate(var(--r))}
 .polas img{display:block;width:100%;aspect-ratio:1;object-fit:cover}
-.polas figcaption{position:absolute;left:0;right:0;bottom:4px;text-align:center;color:#333;font-size:.62rem;font-weight:700}
+.grid figcaption,.hero figcaption,.polas figcaption{right:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.polas figcaption{position:absolute;left:0;right:0;padding:0 4px;bottom:4px;text-align:center;color:#333;font-size:.62rem;font-weight:700}
 .hero{position:relative;margin-top:14px}
-.hero img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px}
+.hero img{display:block;width:100%;aspect-ratio:4/3;max-height:24vh;max-height:24cqh;object-fit:cover;border-radius:12px}
 .strip{display:flex;gap:6px;margin-top:6px}
 .strip img{flex:1;min-width:0;aspect-ratio:1;object-fit:cover;border-radius:8px}
 .s-intro .inner{position:static}.s-intro .inner>*:not(.collage){position:relative;z-index:1}
-.collage{position:absolute;inset:0;z-index:0;display:grid;grid-template-columns:repeat(3,1fr);align-content:center;gap:12px;padding:70px 14px;filter:brightness(.32) saturate(1.15);pointer-events:none}
+.collage{position:absolute;inset:0;z-index:0;overflow:hidden;display:grid;grid-template-columns:repeat(3,1fr);align-content:center;gap:12px;padding:70px 14px;filter:brightness(.32) saturate(1.15);pointer-events:none}
 .slide.on .inner>.collage{animation:dim 1.2s ease both}
 @keyframes dim{from{opacity:0}to{opacity:1}}
 .collage .cl{transform:rotate(var(--r))}
 .collage img,.collage .ph{display:block;width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px}
 .s-intro .inner{position:relative}
 .card{background:rgba(0,0,0,.32);border-radius:20px;padding:22px;backdrop-filter:blur(6px)}
-.facts{display:grid;grid-template-columns:1fr 1fr;gap:16px 12px}
+.facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px 12px}
 .facts b{display:block;font-family:var(--head);font-size:1.9rem;font-weight:900;letter-spacing:-.03em;color:var(--accent);line-height:1}
 .facts span{font-size:.78rem;font-weight:700;opacity:.85}
-.tops{list-style:none;margin-top:20px;display:grid;gap:8px;border-top:1px solid rgba(255,255,255,.25);padding-top:16px}
+.tops{list-style:none;margin-top:20px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px;border-top:1px solid rgba(255,255,255,.25);padding-top:16px}
 .tops li{display:flex;gap:10px;justify-content:space-between;font-size:.92rem}
-.tops span{opacity:.75}.tops b{text-align:right}
+.tops span{opacity:.75;flex:none}.tops b{text-align:right;min-width:0;display:block;white-space:nowrap;text-overflow:ellipsis;-webkit-line-clamp:unset}
 .receipt{background:#fbfaf5;color:#1b1b1b;font-family:ui-monospace,"Courier New",monospace;padding:22px 18px 18px;border-radius:4px;box-shadow:0 18px 40px rgba(0,0,0,.45);transform:rotate(-1.5deg);
  -webkit-mask:linear-gradient(#000 0 0) top/100% calc(100% - 10px) no-repeat,radial-gradient(circle at 6px 100%,transparent 6px,#000 6.5px) bottom/12px 10px repeat-x}
 .receipt .rh{text-align:center;font-weight:800;letter-spacing:.08em;border-bottom:1px dashed #999;padding-bottom:10px;margin-bottom:10px;font-size:.85rem}
-.receipt ul{list-style:none;display:grid;gap:6px;font-size:.85rem}
-.receipt li{display:flex;justify-content:space-between;gap:10px}.receipt li b{text-align:right}
+.receipt ul{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;font-size:.85rem}
+.receipt li{display:flex;justify-content:space-between;gap:10px}.receipt li span{flex:none}.receipt li b{text-align:right;min-width:0;display:block;white-space:nowrap;text-overflow:ellipsis;-webkit-line-clamp:unset}
 .receipt li.sep{border-top:1px dashed #999;margin:4px 0}
 .receipt .rf{text-align:center;margin-top:12px;font-size:.75rem;opacity:.7}
 .progress{position:fixed;top:0;left:0;right:0;max-width:520px;margin:0 auto;display:flex;gap:4px;padding:calc(env(safe-area-inset-top) + 12px) 12px 0;z-index:5}
@@ -759,15 +776,20 @@ html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);o
 .badges{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 8px;margin-top:16px}
 .badges figure{text-align:center}
 .badges img,.badges .ph{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;box-shadow:0 8px 20px rgba(0,0,0,.4);background:rgba(255,255,255,.15)}
-.badges figcaption{font-size:.7rem;font-weight:700;margin-top:6px;line-height:1.2}
+.badges figure{justify-self:center;width:100%;max-width:17vh;max-width:17cqh}
+.badges figcaption{--ln:3;font-size:.7rem;font-weight:700;margin-top:6px;line-height:1.2}
 .badges figcaption span{display:block;opacity:.75;font-weight:600}
 .thumbs .th{width:44px;height:44px;border-radius:10px;object-fit:cover;background:rgba(255,255,255,.18);align-self:center}
-.list.thumbs li{grid-template-columns:28px 44px 1fr;align-items:center}
+.list.thumbs li{grid-template-columns:28px 44px minmax(0,1fr);align-items:center}
 .list.thumbs .th{grid-row:span 2}
-.ranks.thumbs li{grid-template-columns:44px 44px 1fr auto;align-items:center}
+.ranks.thumbs li{grid-template-columns:44px 44px minmax(0,1fr) auto;align-items:center}
 .slide .ph{container-type:inline-size;display:grid;place-items:center;overflow:hidden;color:#111;
  background:linear-gradient(var(--pa,135deg),var(--accent),color-mix(in srgb,var(--accent) 38%,var(--blob2)))}
 .slide .ph strong{font-size:1.3rem;font-size:34cqw;font-weight:900;letter-spacing:-.02em;line-height:1;opacity:.8}
+@container stage (max-height:760px){
+ .inner{padding-top:60px;padding-bottom:40px}.kicker{margin-bottom:8px}.big{margin-bottom:6px}.list{margin-top:12px;gap:8px}.foot{margin-top:10px}.delta{margin-top:12px}.sub{margin-top:14px}
+ .card{padding:16px}.facts{gap:10px 12px}.facts b{font-size:1.5rem}.tops{margin-top:12px;gap:5px;padding-top:10px}
+ .receipt{padding:16px 14px 14px}.receipt ul{gap:4px}.badges{gap:6px 8px;margin-top:10px}.podium{margin-top:12px}.poster{margin-bottom:12px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style></head>
 <body class="{{BODY}}">
@@ -777,6 +799,7 @@ html,body{height:100%;background:#000;color:var(--ink);font-family:var(--font);o
 </main>
 <div class="tap l" aria-label="Zurück"></div><div class="tap r" aria-label="Weiter"></div>
 {{SOUND}}
+{{FIT}}
 <script>
 (()=>{const S=[...document.querySelectorAll('.slide')],B=[...document.querySelectorAll('.progress i')],DUR=9000;let i=0,t;
 document.documentElement.style.setProperty('--dur',DUR+'ms');

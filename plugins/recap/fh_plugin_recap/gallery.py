@@ -37,6 +37,8 @@ def params(palette=None, shape=None, type_=None, offset=None, v=""):
         m = re.fullmatch(r"([a-z]+?)(\d)", part)
         if m and m[1] in story.VARIANTS and int(m[2]) < story.VARIANTS[m[1]]:
             sel[m[1]] = int(m[2])
+        elif m and m[1] == "worst" and m[2] == "1":  # not a variant: the sample month at its limits
+            sel["worst"] = 1
     return palette, shape, type_, offset, sel
 
 
@@ -45,8 +47,8 @@ def encode_sel(sel):
 
 
 def sample_story(palette, shape, type_, offset, sel):
-    """The sample month rendered with the given design; ``sel`` maps slides to a variant (the rest use the first)."""
-    data, prev, history = sample.sample_story_input()
+    """The sample month rendered with the given design; ``sel`` maps slides to a variant (the rest use the first), ``worst`` = 1 picks the month at its limits."""
+    data, prev, history = sample.sample_story_input(worst=bool(sel.get("worst")))
     data["design"].update(palette=palette, shape=shape, type=type_, offset=offset,
                           variants={k: sel.get(k, 0) for k in story.VARIANTS}, texts={k: 0 for k in story.KICKERS})
     return story.render(data, prev, history)
@@ -54,17 +56,17 @@ def sample_story(palette, shape, type_, offset, sel):
 
 def frame_page(section, palette, shape, type_, offset):
     """A one-slide page made of the story's own PAGE template, shown in its final state."""
-    page = SCRIPT.sub("", story.PAGE).replace("</style>", STATIC_CSS + "</style>", 1)
+    page = SCRIPT.sub("", story.PAGE).replace("{{FIT}}", story.FIT).replace("</style>", STATIC_CSS + "</style>", 1)
     return (page.replace("{{TITLE}}", "Vorschau").replace("{{BARS}}", "").replace("{{SOUND}}", "")
             .replace("{{BODY}}", f"shape-{shape} type-{type_}")
             .replace("{{SLIDES}}", section.replace('<section class="slide', '<section class="slide on', 1)))
 
 
-def sections(palette, shape, type_, offset):
+def sections(palette, shape, type_, offset, worst=False):
     """``{(key, variant): section html}`` for every slide in every variant, special slides as ``(key, 0)``."""
     out = {}
     for n in range(max(story.VARIANTS.values())):
-        page = sample_story(palette, shape, type_, offset, {k: min(n, c - 1) for k, c in story.VARIANTS.items()})
+        page = sample_story(palette, shape, type_, offset, {**{k: min(n, c - 1) for k, c in story.VARIANTS.items()}, "worst": int(worst)})
         for m in SECTION.finditer(page):
             key, v = m[1], int(m[2])
             if (key in story.VARIANTS and v == n) or (key not in story.VARIANTS and n == 0):
@@ -89,7 +91,8 @@ h1{font-size:1.25rem;margin:0 0 8px}h2{font-size:1.15rem;margin:36px 0 4px}h2 sm
 
 def render_gallery(palette, shape, type_, offset, sel, link):
     """The gallery page. ``link(kind, palette, shape, type_, offset, sel)`` makes the address of the gallery (``"g"``) or of the full story (``"s"``)."""
-    secs = sections(palette, shape, type_, offset)
+    worst = bool(sel.get("worst"))
+    secs = sections(palette, shape, type_, offset, worst)
 
     def chips(name, options, current, make):
         return (f'<div class="row"><b>{name}</b>' + "".join(
@@ -120,6 +123,8 @@ def render_gallery(palette, shape, type_, offset, sel, link):
             + chips("Form", story.SHAPES, shape, lambda o: link("g", palette, o, type_, offset, sel))
             + chips("Schrift", story.TYPES, type_, lambda o: link("g", palette, shape, o, offset, sel))
             + chips("Farbwechsel", range(6), offset, lambda o: link("g", palette, shape, type_, o, sel))
+            + chips("Daten", ("normal", "Grenzfall"), "Grenzfall" if worst else "normal",
+                    lambda o: link("g", palette, shape, type_, offset, {**{k: v for k, v in sel.items() if k != "worst"}, **({"worst": 1} if o == "Grenzfall" else {})}))
             + f'<div class="row"><b>Story</b><a class="chip go" href="{html.escape(link("s", palette, shape, type_, offset, sel))}">Beispiel-Story mit der Auswahl öffnen</a>'
               f'<span class="hint">Auswahl: {html.escape(encode_sel(sel) or "überall Variante 1")}. Innerhalb einer Palette wechseln die Farben von Folie zu Folie.</span></div></header>')
     return (f'<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
