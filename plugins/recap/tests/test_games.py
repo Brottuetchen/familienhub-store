@@ -429,7 +429,7 @@ def test_design_choice_for_other_slides_is_untouched_and_games_do_not_repeat():
         if key not in story.LATE_SLIDES:
             assert 0 <= other["variants"][key] < story.VARIANTS[key]
     assert first["palette"] in story.PALETTES and first["offset"] in range(6)
-    assert list(first["variants"]) == [k for k in story.VARIANTS if k not in story.LATE_SLIDES] + ["games"]
+    assert list(first["variants"]) == [k for k in story.VARIANTS if k not in story.LATE_SLIDES] + ["games", "ra"]
 
 
 def test_highlights_for_games():

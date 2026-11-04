@@ -494,7 +494,7 @@ def _slide_clips(page):
     return re.findall(r'<section class="slide s-(\w+)[^"]*"[^>]*?data-clip="([^"]+)"', page)
 
 
-@pytest.mark.parametrize("count", [3, 20])
+@pytest.mark.parametrize("count", [3, 22])
 def test_no_song_repeats_across_slides(count):
     data = snapshot_data()
     data["soundtrack"] = _clips(count)
@@ -520,4 +520,4 @@ def test_a_single_clip_still_starts_the_story_with_sound():
 
 def test_soundtrack_collects_enough_clips_for_every_slide():
     from fh_plugin_recap import collectors
-    assert collectors.CLIP_COUNT >= 18
+    assert collectors.CLIP_COUNT >= 20
