@@ -73,6 +73,39 @@ def game_states(user_id: int, start, end):
     return base, final
 
 
+def steam_states(user_id: int, start, end):
+    """``(baseline, end state, time of the end state)`` of the Steam library for [start, end), chosen like
+    ``game_states``; without a later snapshot the end state is None (ask Steam now). The time is the start of the
+    snapshot's day, the earliest it can have been taken."""
+    days = store.steam_days(user_id)
+    first, after = start.date().isoformat(), end.date().isoformat()
+    before = [d for d in days if d <= first]
+    later = [d for d in days if d >= after]
+    base = store.read_steam(user_id, before[-1]) if before else None
+    final = store.read_steam(user_id, later[0]) if later else None
+    if final is None:
+        return base, None, None
+    return base, final, dt.datetime.fromisoformat(later[0]).replace(tzinfo=start.tzinfo)
+
+
+async def snapshot_steam(user_id: int, cfg: collectors.Config, tz) -> bool:
+    """Writes today's Steam snapshot unless there is one already: one API request per local day and person while it
+    works, a failed request is tried again on the next run. Silent like ``snapshot_games`` (the error would only say
+    what the snapshot cannot hold anyway)."""
+    if not (cfg.steam_id and cfg.steam_api_key):
+        return False
+    try:
+        day = dt.datetime.now(tz).date().isoformat()
+        if store.steam_path(user_id, day).exists():
+            return False
+        async with collectors.new_client() as client:
+            state = await collectors.steam_owned(client, cfg)
+        store.write_steam(user_id, day, state)
+        return True
+    except Exception:  # noqa: BLE001 - never disturbs the scheduler or the build
+        return False
+
+
 async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, redesign: bool = False) -> Dict[str, Any]:
     """Collects, designs and writes one month. Raises ``BuildFailed`` when nothing could be collected and a source failed.
     The story and its files are assembled in a temporary folder and moved into place at the end, the snapshot
@@ -94,10 +127,12 @@ async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, r
                 "audiobooks": lambda: collectors.collect_audiobookshelf(client, cfg, start, end, img, tz, covers),
                 "podcasts": lambda: collectors.collect_podcasts(client, cfg, start, end, img, covers),
                 "photos": lambda: collectors.collect_immich(client, cfg, start, end, img),
-                "games": lambda: collectors.collect_games(client, cfg, start, end, img, *game_states(user_id, start, end), covers),
+                "games": lambda: collectors.collect_games(client, cfg, start, end, img, *game_states(user_id, start, end), covers,
+                                                          steam_states(user_id, start, end), data["errors"]),
                 "retroachievements": lambda: collectors.collect_retroachievements(client, cfg, start, end, img, covers),
             }
             wanted = cfg.sources()
+            await snapshot_steam(user_id, cfg, tz)  # a build on demand also keeps today's state (no-op if taken)
             for key, step in steps.items():
                 if key not in wanted:
                     data[key] = {}
@@ -214,4 +249,4 @@ def start(user_id: int, month: str, cfg: collectors.Config, tz, *, redesign: boo
     return "started"
 
 
-__all__ = ["BuildFailed", "build_month", "snapshot_games", "game_states", "start", "busy", "is_running", "prev_month", "month_bounds"]
+__all__ = ["BuildFailed", "build_month", "snapshot_games", "snapshot_steam", "game_states", "steam_states", "start", "busy", "is_running", "prev_month", "month_bounds"]
