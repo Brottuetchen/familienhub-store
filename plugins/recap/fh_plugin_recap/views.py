@@ -81,6 +81,7 @@ def render_obsidian(data: Dict[str, Any], url: str) -> str:
              f"filme: {jf.get('movies_count', 0)}", f"musik_minuten: {mu.get('minutes', 0)}",
              f"hoerbuch_stunden: {ab.get('hours', 0)}", f"podcast_stunden: {pc.get('hours', 0)}",
              f"fotos: {ph.get('total', 0)}", *([f"spiele_stunden: {data['games']['hours']}"] if (data.get("games") or {}).get("games") else []),
+             *([f"erfolge: {data['retroachievements']['total']}"] if (data.get("retroachievements") or {}).get("total") else []),
              "---",
              f"# Rückblick {mname} {year}", "", f"**[▶ Rückblick als Story ansehen]({url})**", "",
              f"Insgesamt **{de_num(t.get('media_hours', 0))} Stunden** Medien.", ""]
@@ -115,6 +116,16 @@ def render_obsidian(data: Dict[str, Any], url: str) -> str:
                   f"{ga['systems_count']} Systemen" + (f", am meisten auf {ga['top_system']}." if ga.get("top_system") else "."), ""]
         lines += [f"{i}. **{x['name']}** ({x['system']}) – {de_num(x['minutes'] / 60, 1)} h, {x['sessions']} Starts"
                   for i, x in enumerate(ga["games"][:5], 1)]
+        lines.append("")
+    ra = data.get("retroachievements") or {}
+    if ra.get("total"):
+        lines += ["## Achievements", f"{ra['total']} Erfolge, {de_num(ra['points'])} Punkte ({ra['hardcore']} im Hardcore-Modus) in "
+                  f"{ra['games_count']} Spielen.", ""]
+        lines += [f"{i}. **{x['name']}** ({x['console']}) – {x['count']} Erfolge" for i, x in enumerate(ra.get("games") or [], 1)]
+        if ra.get("rarest"):
+            lines += ["", "Seltenste Erfolge: " + ", ".join(f"{x['title']} ({x['game']})" for x in ra["rarest"][:3])]
+        if ra.get("awards"):
+            lines += ["", "Geschafft: " + ", ".join(a["title"] for a in ra["awards"])]
         lines.append("")
     lines += ["## Meine Notizen", "", ""]
     return "\n".join(lines)
