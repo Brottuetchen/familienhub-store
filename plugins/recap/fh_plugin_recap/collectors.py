@@ -1315,6 +1315,136 @@ async def collect_retroachievements(client, cfg: Config, start, end, img: Path,
             "games": top_games, "rarest": [{k: v for k, v in x.items() if k != "id"} for x in rarest], "awards": awards}
 
 
+# --- Achievements of Anker games and PS4 trophies (from the device files, names from the Steam Web API) -----------
+# The deck script ``esde-romm-sync`` writes ``_achievements`` into each device file:
+#   {"anker:1773": {"title", "source": "anker"|"ps4", "steam_app_id"?, "unlocked": [{"id", "name"?, "time"}]}}
+# Only unlocks whose time lies in the period count. Names, descriptions and icons come from ``GetSchemaForGame``
+# when the person has a Steam key and the game a known app id; otherwise the raw name from the file is shown.
+
+PC_SOURCES = {"anker": "PC", "ps4": "PS4"}
+PC_TOP_GAMES = 5
+PC_TILES = 6
+ACH_KEY_RE = re.compile(r"^(anker|ps4):[A-Za-z0-9_-]{1,40}$")
+
+
+def read_achievements(games_dir: str, devices) -> Dict[str, Dict[str, Any]]:
+    """``{"<source>:<id>": {"title", "source", "steam_app_id", "unlocked": [{"id", "name", "time"}]}}`` of all readable
+    device files, an unlock seen on several devices counted once (earliest time). Odd or missing data is skipped."""
+    out: Dict[str, Dict[str, Any]] = {}
+    for device in devices:
+        if not DEVICE_RE.match(device):
+            continue
+        try:
+            raw = json.loads((Path(games_dir) / f"{device}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        block = raw.get("_achievements") if isinstance(raw, dict) else None
+        if not isinstance(block, dict):
+            continue
+        for key, entry in block.items():
+            if not (isinstance(key, str) and ACH_KEY_RE.match(key) and isinstance(entry, dict)):
+                continue
+            title = str(entry.get("title") or "").strip()
+            if not title or not isinstance(entry.get("unlocked"), list):
+                continue
+            game = out.setdefault(key, {"title": title, "source": key.split(":")[0], "unlocked": {},
+                                        "steam_app_id": None})
+            app = str(entry.get("steam_app_id") or "")
+            if app.isdigit():
+                game["steam_app_id"] = app
+            for u in entry["unlocked"]:
+                if not (isinstance(u, dict) and str(u.get("id") or "").strip()):
+                    continue
+                when = _whole(u.get("time"))
+                uid = str(u["id"]).strip()[:120]
+                old = game["unlocked"].get(uid)
+                if old is None or (when and (not old["time"] or when < old["time"])):
+                    game["unlocked"][uid] = {"id": uid, "time": when, "name": str(u.get("name") or "").strip()[:120]}
+    for game in out.values():
+        game["unlocked"] = sorted(game["unlocked"].values(), key=lambda u: (u["time"], u["id"]))
+    return out
+
+
+async def steam_schema(client, cfg: Config, app_id: str) -> Dict[str, Dict[str, str]]:
+    """``{api name (lower case): {name, description, icon}}`` of a Steam game (German texts when there are any)."""
+    data = await get_json(client, f"{STEAM_API}/ISteamUserStats/GetSchemaForGame/v2/",
+                          params={"key": cfg.steam_api_key, "appid": app_id, "l": "german"})
+    items = (((data.get("game") or {}).get("availableGameStats") or {}).get("achievements")
+             if isinstance(data, dict) and isinstance(data.get("game"), dict) else None)
+    out: Dict[str, Dict[str, str]] = {}
+    for a in items if isinstance(items, list) else []:
+        if isinstance(a, dict) and a.get("name"):
+            out[str(a["name"]).lower()] = {"name": str(a.get("displayName") or "").strip(),
+                                           "description": str(a.get("description") or "").strip(),
+                                           "icon": str(a.get("icon") or "")}
+    return out
+
+
+async def collect_pc_achievements(client, cfg: Config, start, end, img: Path, covers: Optional[Covers] = None) -> Dict[str, Any]:
+    """Achievements of Anker games and PS4 trophies unlocked in [start, end), in the shape of the RetroAchievements
+    block (``total``, ``games``, ``rarest``) with ``source`` on every game and tile. ``points`` stay 0: these have none."""
+    covers = covers or Covers()
+    lo, hi = int(start.timestamp()), int(end.timestamp())
+    found = read_achievements(cfg.games_dir, cfg.games_devices)
+    rows: List[Dict[str, Any]] = []
+    games: List[Dict[str, Any]] = []
+    for key, game in sorted(found.items()):
+        mine = [u for u in game["unlocked"] if lo <= u["time"] < hi]
+        if not mine:
+            continue
+        schema: Dict[str, Dict[str, str]] = {}
+        if game["steam_app_id"] and cfg.steam_api_key:
+            try:
+                schema = await steam_schema(client, cfg, game["steam_app_id"])
+            except COVER_ERRORS:
+                schema = {}  # raw names then
+        for u in mine:
+            info = schema.get(u["id"].lower()) or {}
+            rows.append({"title": info.get("name") or u.get("name") or u["id"].replace("_", " ").title(),
+                         "description": info.get("description") or "", "points": 0, "true_points": 0, "hardcore": False,
+                         "game": game["title"], "badge": None, "_badge": info.get("icon") or None, "time": u["time"],
+                         "source": game["source"], "_key": key})
+        games.append({"name": game["title"], "console": PC_SOURCES.get(game["source"], "PC"), "count": len(mine), "points": 0,
+                      "icon": None, "_icon": None, "source": game["source"], "_key": key})
+    rows.sort(key=lambda x: (-x["time"], x["title"].casefold()))
+    games.sort(key=lambda g: (-g["count"], g["name"].casefold()))
+    top_games = games[:PC_TOP_GAMES]
+    tiles = rows[:PC_TILES]  # the newest ones get a picture
+
+    async def pic(url, name):
+        return await save_image(client, url, img, name) if url else None
+
+    jobs = [(x, "badge", (lambda x=x, n=n: pic(x["_badge"], f"pc-b{n}"))) for n, x in enumerate(tiles)]
+    await covers.fill(jobs)
+    for g in top_games:  # the game's icon: the badge of its newest tile
+        g["icon"] = next((x["badge"] for x in tiles if x["_key"] == g["_key"] and x["badge"]), None)
+    for x in rows:
+        x.pop("_badge", None)
+    for g in games:
+        g.pop("_icon", None)
+    clean = lambda items: [{k: v for k, v in x.items() if k not in ("_key", "time")} for x in items]  # noqa: E731
+    return {"total": len(rows), "points": 0, "true_points": 0, "hardcore": 0, "softcore": len(rows),
+            "games_count": len(games), "games": clean(top_games), "rarest": clean(tiles), "awards": []}
+
+
+def merge_achievements(ra: Optional[Dict[str, Any]], pc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """RetroAchievements and PC/PS4 achievements as one block for the story. ``ra`` keeps its own meaning (points, hardcore,
+    awards); ``ra_total``/``pc_total`` say where the numbers come from, games and tiles carry a ``source``."""
+    ra, pc = ra or {}, pc or {}
+    if not pc.get("total"):
+        return ra
+    if not ra.get("total"):
+        return {**pc, "ra_total": 0, "pc_total": pc["total"], "ra_games_count": 0, "pc_games_count": pc["games_count"]}
+    for x in ra.get("games", []) + ra.get("rarest", []):
+        x.setdefault("source", "ra")
+    tiles = (ra.get("rarest") or [])[:RA_RAREST - 2] + (pc.get("rarest") or [])[:2]
+    tiles += [x for x in (ra.get("rarest") or [])[RA_RAREST - 2:] if len(tiles) < RA_RAREST]
+    games = sorted((ra.get("games") or []) + (pc.get("games") or []), key=lambda g: (-g["count"], g["name"].casefold()))[:RA_TOP_GAMES]
+    return {**ra, "total": ra["total"] + pc["total"], "games_count": ra.get("games_count", 0) + pc["games_count"],
+            "games": games, "rarest": tiles, "ra_total": ra["total"], "pc_total": pc["total"],
+            "ra_games_count": ra.get("games_count", 0), "pc_games_count": pc["games_count"]}
+
+
 # --- Soundtrack from Navidrome (Subsonic API) ------------------------------------------------------------------
 
 async def collect_soundtrack(client, cfg: Config, music: Dict[str, Any], out: Path) -> List[Dict[str, Any]]:

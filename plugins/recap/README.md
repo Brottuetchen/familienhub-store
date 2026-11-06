@@ -15,11 +15,28 @@ Per person means: the admin enters only the addresses of the services (and one J
 | Audiobookshelf | Listening time, top books, finished books | your API token |
 | Podcasts | AntennaPod listening through Nextcloud GPodder Sync | Nextcloud address, user name and app password |
 | Immich | Photos and videos, busiest day, places, a few highlight pictures, trips | your API key |
+| Games (ES-DE device files) | Play time per game and device, plus **achievements of Anker Launcher games and PS4 trophies of the Bloodborne port**, read from `_achievements` in the same device files (see below) | the device names in *Game devices (ES-DE)*; names, descriptions and icons need your Steam Web API key |
 | Navidrome | The soundtrack: ten short clips of your favourite tracks | your user name and password |
 
 A source whose server address is empty, or for which a person entered nothing, is skipped. A source that fails while building is skipped, too, and only noted in the snapshot (`errors`); the rest of the recap is still built. Slides appear only for sources that delivered data. There is no language model: the texts are text blocks, every statement comes straight from the data. The story texts are German; translating them is a follow-up.
 
 The look follows a design engine with a **memory**: palette, background shape, type style, layout variant and text of every slide are chosen per person and month, and exclude what the person's previous months used, so no month looks like the last one. Special slides appear when something special happened (new record, finished series, new artists, a trip, a 7-day streak).
+
+## Interim state of the running month (1.8.0)
+
+`POST /api/plugins/recap/build?month=<running month>&preview=true` (the month is optional) builds the running month **up to the end of today** as an interim state. It is stored apart from the real month (`<user>/2026-11-preview.json`, `<user>/2026-11-preview/`), the title slide says "Zwischenstand bis 6. November", and it is rebuilt on every call (its design is kept). It is never announced (no push), is not part of the design memory, comparisons or records, and does not block the real build: when the finished month is built later, the interim state is removed. Without `preview` the old rule stands: only finished months can be built. `GET .../months` lists it under `previews` (with `label`, `until`, `route`), the archive page shows it as a dashed card on top, and it opens like any month (`/plugin-page/recap/recaps?path=2026-11-preview/`).
+
+## Achievements from PC and PS4 games (1.8.0)
+
+The device-file script `esde-romm-sync` (Steam Deck / PC) collects achievements and writes them to the person's own device file under `_achievements`:
+
+```json
+{"_achievements": {"anker:1773": {"title": "Cult of the Lamb", "steam_app_id": "1313140", "source": "anker",
+   "unlocked": [{"id": "DEAL_WITH_THE_DEVIL", "time": 1793999522}]},
+  "ps4:3972": {"title": "Bloodborne", "source": "ps4", "unlocked": [{"id": "000", "name": "Hunter of Hunters", "time": 1794000000}]}}}
+```
+
+The plugin reads this block from the devices in *Game devices (ES-DE)* (like play time) and counts only unlocks whose time lies in the period (month, interim state or year). With a Steam Web API key and a known `steam_app_id` it asks `ISteamUserStats/GetSchemaForGame` for the German name, description and icon; without a key or a match the raw name from the file is shown. They appear on the existing "Achievements" slide (and the annual one) together with RetroAchievements: RetroAchievements keeps its points, the PC/PS4 part is named separately ("Dazu 3 Erfolge in 2 Spielen auf PC und PS4"), games show their platform ("PC", "PS4") and tiles without points show the platform instead of points. The block is optional; devices without it just add nothing.
 
 ## Annual recap (Jahresrückblick)
 
@@ -98,7 +115,8 @@ You can also build on demand (the app has no button for it yet; use the API with
 | Endpoint | Meaning |
 |---|---|
 | `POST /api/plugins/recap/build[?month=YYYY-MM][&force=true]` | Builds your own previous month (or a finished month you name) in the background. `status` is `started`, `running`, `busy` (another build runs), `exists` (add `force=true` to rebuild; the design stays the same), or `no_sources`. |
-| `GET /api/plugins/recap/months` | Your months (newest first), figures, failed sources, and months being built. |
+| `POST /api/plugins/recap/build?preview=true` | Interim state of the running month, see above. |
+| `GET /api/plugins/recap/months` | Your months (newest first), figures, failed sources, and months being built; `previews` holds the interim state of the running month. |
 | `GET /api/plugins/recap/markdown/{month}` | The Obsidian note of a month (front matter, totals, top lists, link to the story as an in-app route). Scoped access keys cannot reach plugin routes; use an unrestricted key. |
 
 ## Where data is stored

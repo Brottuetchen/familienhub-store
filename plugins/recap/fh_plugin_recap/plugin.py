@@ -133,6 +133,10 @@ def last_month() -> str:
     return build.prev_month(dt.datetime.now(_tz()).strftime("%Y-%m"))
 
 
+def this_month() -> str:
+    return dt.datetime.now(_tz()).strftime("%Y-%m")
+
+
 def last_year() -> Optional[str]:
     """The year that just ended while we are still in January (the window for the automatic annual build), else None."""
     now = dt.datetime.now(_tz())
@@ -183,12 +187,25 @@ def _valid_year(year: str) -> str:
 @router.post("/build")
 async def build_endpoint(month: Optional[str] = Query(default=None), force: bool = Query(default=False),
                          redesign: bool = Query(default=False), year: Optional[str] = Query(default=None),
-                         user=Depends(get_current_user)):
+                         preview: bool = Query(default=False), user=Depends(get_current_user)):
     """Builds the logged-in person's recap (previous month, or ``?month=YYYY-MM``) in the background, or with
     ``?year=YYYY`` the annual recap of a finished year. ``redesign`` rebuilds an existing one with a fresh design
-    instead of keeping the stored one."""
+    instead of keeping the stored one. ``preview=true`` builds the *running* month up to today as an interim state
+    (``YYYY-MM-preview``): kept apart from the real month, never announced, not part of the design memory or any
+    comparison, rebuilt on every call."""
     if year is not None and month is not None:
         raise HTTPException(422, "Give either a month or a year")
+    if preview:
+        if year is not None:
+            raise HTTPException(422, "A preview is only for the running month")
+        if (_valid_month(month) if month else this_month()) != this_month():
+            raise HTTPException(422, "A preview is only for the running month")
+        target = store.preview_period(this_month())
+        cfg = load_config(user.id)
+        if not cfg.sources():
+            return {"status": "no_sources", "month": target}
+        status = build.start(user.id, target, cfg, _tz(), redesign=redesign, on_done=announce, log=logger.warning)
+        return {"status": status, "month": target, "route": route_for(target), "preview": True}
     if year is not None:
         target = _valid_year(year)
         if int(target) >= current_year():
@@ -222,8 +239,16 @@ async def months_endpoint(user=Depends(get_current_user)):
                       "media_hours": (data.get("totals") or {}).get("media_hours", 0),
                       "photos": (data.get("photos") or {}).get("total", 0),
                       "failed_sources": sorted((data.get("errors") or {}).keys())})
+    previews = []
+    for period in store.list_previews(user.id):  # the running month's interim state, marked as such
+        data = store.read_snapshot(user.id, period) or {}
+        previews.append({"month": store.preview_month(period), "period": period, "preview": True, "label": views.month_label(period),
+                         "route": route_for(period), "until": data.get("until"), "generated": data.get("generated"),
+                         "media_hours": (data.get("totals") or {}).get("media_hours", 0),
+                         "photos": (data.get("photos") or {}).get("total", 0),
+                         "failed_sources": sorted((data.get("errors") or {}).keys())})
     building = [m for (uid, m) in list(build._running) if uid == user.id and build.is_running(uid, m)]
-    return {"items": items, "years": years, "building": building}
+    return {"items": items, "years": years, "previews": previews, "building": building}
 
 
 @router.get("/markdown/{month}", response_class=PlainTextResponse)
@@ -289,8 +314,8 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.7.0",
-            description="A monthly recap per person: series, music, audiobooks, podcasts, photos and games as a story.",
+            id=PLUGIN_ID, name="Recap", version="1.8.0",
+            description="A monthly recap per person: series, music, audiobooks, podcasts, photos, games and achievements as a story.",
             capabilities=frozenset(),
             settings=(
                 Setting("RECAP_JELLYFIN_URL", "Jellyfin address", required=False, type="url"),

@@ -273,6 +273,34 @@ def img(src, cls="", name=""):
     return f'<div class="ph {cls}" style="--pa:{angle}deg"><strong>{e(initials(name))}</strong></div>'
 
 
+def ach_lead(ra, plain=False):
+    """The sentence under the achievement count. RetroAchievements keeps its points (and hard mode); achievements from PC and PS4
+    games (``pc_total``, merged in by ``collectors.merge_achievements``) are named separately, so the source stays visible."""
+    b = (lambda x: x) if plain else (lambda x: f"<b>{x}</b>")  # noqa: E731
+    pc = ra.get("pc_total", 0)
+    rt = ra["total"] - pc
+    hc = ra.get("hardcore", 0)
+    out = ""
+    if rt:
+        games = ra.get("ra_games_count", ra.get("games_count", 0))
+        out = (f"{b(de_num(ra['points']))} Punkte"
+               + (f", davon {hc} im Hardcore-Modus" if hc and hc < rt else ", alle im Hardcore-Modus" if hc else "")
+               + f" in {games} {'Spiel' if games == 1 else 'Spielen'}"
+               + (" bei RetroAchievements." if pc else "."))
+    if pc:
+        pg = ra.get("pc_games_count", 0)
+        out += (" Dazu " if rt else "Freigeschaltet ") + (f"{pc} {'Erfolg' if pc == 1 else 'Erfolge'} in {pg} {'Spiel' if pg == 1 else 'Spielen'} auf PC und PS4."
+                                                              if rt else f"in {pg} {'Spiel' if pg == 1 else 'Spielen'} auf PC und PS4.")
+    return out
+
+
+def ach_meta(x):
+    """The small line under an achievement tile: points (RetroAchievements) or the platform of a PC/PS4 game."""
+    if x.get("points"):
+        return f"{de_num(x['points'])} Punkte"
+    return {"pc": "PC", "anker": "PC", "ps4": "PS4"}.get(x.get("source"), "")
+
+
 def render(data, prev, history):
     d = data["design"]
     hl = data.get("highlights") or {}
@@ -305,6 +333,11 @@ def render(data, prev, history):
         intro = f'<p class="outline">{y}</p>{kick("intro")}<h1 class="giant">{mname}</h1><p class="lead">{lead}</p>'
     else:
         intro = f'{kick("intro")}<h1 class="giant">{mname}<br><span class="year">{y}</span></h1><p class="lead">{lead}</p>'
+
+    if data.get("preview"):  # an interim state says so on the title slide
+        until = dt.date.fromisoformat(data["until"])
+        intro = ('<p class="stand" style="display:inline-block;margin:0 0 14px;padding:.4em 1em;border:2px dashed currentColor;border-radius:999px;'
+                 f'font-weight:800;font-size:.8rem;letter-spacing:.14em;text-transform:uppercase">Zwischenstand bis {until.day}. {MONTHS[until.month - 1]}</p>{intro}')
 
     # Total
     parts = [("Serien", t["series_hours"]), ("Filme", t["movie_hours"]), ("Musik", t["music_hours"]),
@@ -495,20 +528,20 @@ def render(data, prev, history):
         hc = ra.get("hardcore", 0)
         best = (ra.get("rarest") or [])[:6]
         big = f'<p class="big">{count(n)}<small> {"Erfolg" if n == 1 else "Erfolge"}</small></p>'
-        pts = (f'<p class="lead"><b>{de_num(ra["points"])}</b> Punkte'
-               + (f', davon {hc} im Hardcore-Modus' if hc and hc < n else ', alle im Hardcore-Modus' if hc else "")
-               + f' in {ra["games_count"]} {"Spiel" if ra["games_count"] == 1 else "Spielen"}.</p>')
+        pts = f'<p class="lead">{ach_lead(ra)}</p>'
         rg = ra.get("games") or []
         tiles = "".join(f'<figure>{img(x.get("badge"), "", x["title"])}<figcaption>{e(x["title"])}'
-                        f'<span>{de_num(x["points"])} Punkte</span></figcaption></figure>' for x in best)
+                        f'<span>{e(ach_meta(x))}</span></figcaption></figure>' for x in best)
         rows = "".join(f'<li>{img(x.get("icon"), "th", x["name"])}<b>{e(x["name"])}</b>'
                        f'<span>{e(x.get("console") or "")} · {x["count"]} {"Erfolg" if x["count"] == 1 else "Erfolge"}</span></li>' for x in rg)
         if rv == 1 and rg:
-            add("ra", -1, f'{kick("ra")}{big}{pts}<ol class="list thumbs">{rows}</ol>')
+            news = [x for x in best if x.get("source") not in (None, "ra")][:2]  # PC/PS4 unlocks by name, the rows only count per game
+            seen = (f'<p class="foot">Neu freigeschaltet: {", ".join(f"<b>{e(x["title"])}</b> ({e(x["game"])})" for x in news)}</p>' if news else "")
+            add("ra", -1, f'{kick("ra")}{big}{pts}<ol class="list thumbs">{rows}</ol>{seen}')
         else:
             foot = (f'<p class="foot">Am häufigsten: <b>{e(rg[0]["name"])}</b> ({rg[0]["count"]}).</p>' if rg else "")
             add("ra", -1, f'{kick("ra")}{big}{pts}'
-                + (f'<div class="badges">{tiles}</div><p class="foot">Deine seltensten Erfolge.</p>' if best else "") + foot)
+                + (f'<div class="badges">{tiles}</div><p class="foot">{"Deine seltensten Erfolge." if ra.get("points") else "Deine neuesten Erfolge."}</p>' if best else "") + foot)
 
     # Highlight slides
     special = {}
@@ -586,7 +619,7 @@ def render(data, prev, history):
     if V["outro"] == 1:
         rows = "".join(f'<li><span>{k}</span><b>{v}</b></li>' for k, v in facts) + '<li class="sep"></li>' + \
             "".join(f'<li><span>Top-{k}</span><b>{e(v)}</b></li>' for k, v in tops if v)
-        outro = (f'<div class="receipt"><p class="rh">RÜCKBLICK · {mname.upper()} {y}</p><ul>{rows}</ul>'
+        outro = (f'<div class="receipt"><p class="rh">RÜCKBLICK · {mname.upper()} {y}{" · ZWISCHENSTAND" if data.get("preview") else ""}</p><ul>{rows}</ul>'
                  f'<p class="rf">Danke für deinen Besuch</p></div><p class="foot"><a href="../">Alle Rückblicke</a></p>')
     else:
         outro = (f'{kick("outro")}<div class="card"><div class="facts">{"".join(f"<div><b>{v}</b><span>{k}</span></div>" for k, v in facts)}</div>'
@@ -611,7 +644,7 @@ def render(data, prev, history):
         html_slides.append(f'<section class="slide s-{key} v{V.get(key, 0)}"{attr}>{bd}<div class="inner">{inner}</div>{label}</section>')
     bars = "".join("<i><b></b></i>" for _ in slides)
     sound = '<button class="snd" aria-label="Ton an/aus">🔊</button>' if clips else ""
-    return (PAGE.replace("{{FIT}}", FIT).replace("{{TITLE}}", f"Rückblick {mname} {y}").replace("{{BARS}}", bars)
+    return (PAGE.replace("{{FIT}}", FIT).replace("{{TITLE}}", f"Rückblick {mname} {y}" + (" (Zwischenstand)" if data.get("preview") else "")).replace("{{BARS}}", bars)
             .replace("{{SLIDES}}", "\n".join(html_slides)).replace("{{SOUND}}", sound)
             .replace("{{BODY}}", f'shape-{d["shape"]} type-{d["type"]}'))
 
