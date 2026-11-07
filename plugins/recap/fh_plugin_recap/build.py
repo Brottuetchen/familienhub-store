@@ -138,8 +138,9 @@ async def _collect(user_id: int, cfg: collectors.Config, start, end, tz, img, da
                                                       steam_states(user_id, start, end), data["errors"],
                                                       **({"year": year_firsts(user_id, start, end)} if year else {})),
             "retroachievements": lambda: collectors.collect_retroachievements(client, cfg, start, end, img, covers),
+            "pc_achievements": lambda: collectors.collect_pc_achievements(client, cfg, start, end, img, covers),
         }
-        wanted = cfg.sources()
+        wanted = cfg.sources() + (["pc_achievements"] if cfg.games_devices else [])  # read from the same device files as the games
         await snapshot_steam(user_id, cfg, tz)  # a build on demand also keeps today's state (no-op if taken)
         for key, step in steps.items():
             if key not in wanted:
@@ -150,6 +151,7 @@ async def _collect(user_id: int, cfg: collectors.Config, start, end, tz, img, da
             except Exception as exc:  # noqa: BLE001 - a broken source must not stop the recap
                 data[key] = {}
                 data["errors"][key] = collectors.describe_error(exc)
+        data["retroachievements"] = collectors.merge_achievements(data.get("retroachievements"), data.get("pc_achievements"))
         data["totals"] = compute_totals(data)
         data["soundtrack"] = []
         try:
@@ -158,18 +160,47 @@ async def _collect(user_id: int, cfg: collectors.Config, start, end, tz, img, da
             data["errors"]["soundtrack"] = collectors.describe_error(exc)
 
 
+def preview_bounds(period: str, tz) -> Tuple[dt.datetime, dt.datetime]:
+    """The running month up to the end of today: [first of the month, start of tomorrow)."""
+    start, end = month_bounds(store.preview_month(period), tz)
+    tomorrow = (dt.datetime.now(tz) + dt.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return start, min(end, tomorrow)
+
+
+def drop_preview(user_id: int, month: str) -> None:
+    """Removes the interim state of a month once the real recap exists."""
+    period = store.preview_period(month)
+    shutil.rmtree(store.month_dir(user_id, period), ignore_errors=True)
+    for path in (store.snapshot_path(user_id, period), store.user_dir(user_id) / f"{period}.attempts.json"):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
 async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, redesign: bool = False) -> Dict[str, Any]:
     """Collects, designs and writes one month. Raises ``BuildFailed`` when nothing could be collected and a source failed.
     The story and its files are assembled in a temporary folder and moved into place at the end, the snapshot
-    is written last: a month counts as built only when its snapshot exists."""
-    start, end = month_bounds(month, tz)
+    is written last: a month counts as built only when its snapshot exists.
+
+    ``month`` may also be an interim state (``"2026-11-preview"``): the running month up to today, kept apart from the real
+    month (own files, never announced, not part of the design memory, comparisons or records)."""
+    preview = store.is_preview(month)
+    if preview:
+        start, end = preview_bounds(month, tz)
+    else:
+        start, end = month_bounds(month, tz)
     root = store.user_dir(user_id)
     work = root / f".build-{month}"
     shutil.rmtree(work, ignore_errors=True)
     img = work / "img"
     img.mkdir(parents=True, exist_ok=True)
-    data: Dict[str, Any] = {"month": month, "generated": dt.datetime.now(tz).isoformat(timespec="seconds"),
+    real = store.preview_month(month) if preview else month  # the month the story is about
+    data: Dict[str, Any] = {"month": real, "generated": dt.datetime.now(tz).isoformat(timespec="seconds"),
                             "seed": str(user_id), "errors": {}}
+    if preview:
+        data["preview"] = True
+        data["until"] = (end - dt.timedelta(days=1)).date().isoformat()
     try:
         await _collect(user_id, cfg, start, end, tz, img, data)
 
@@ -179,14 +210,16 @@ async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, r
             raise BuildFailed("nothing collected and a source failed")
 
         old = store.read_snapshot(user_id, month) or {}
-        history = store.history(user_id, month)
-        prev = history[-1] if history and history[-1]["month"] == prev_month(month) else None
+        history = store.history(user_id, real)  # only finished months before it (an interim state is never one of them)
+        prev = history[-1] if history and history[-1]["month"] == prev_month(real) else None
         if not got_data:  # connected and reachable, but nothing happened that month: no story
             data["empty"] = True
             data["notified"] = True
             store.write_snapshot(user_id, month, data)
             return data
         data["highlights"] = story.highlights(data, history)
+        if preview:
+            data["highlights"].pop("record", None)  # a running month is no record
         if old.get("design") and not redesign:
             data["design"] = old["design"]
         else:
@@ -208,6 +241,8 @@ async def build_month(user_id: int, month: str, cfg: collectors.Config, tz, *, r
         shutil.rmtree(trash, ignore_errors=True)
         store.write_snapshot(user_id, month, data)
         store.clear_attempts(user_id, month)
+        if not preview:
+            drop_preview(user_id, month)
         return data
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -309,9 +344,9 @@ def start(user_id: int, month: str, cfg: collectors.Config, tz, *, redesign: boo
 
     async def job() -> None:
         try:
-            builder = build_year if store.is_year(month) else build_month  # ``month`` may also be a year ("2026")
+            builder = build_year if store.is_year(month) else build_month  # ``month`` may also be a year ("2026") or an interim state
             data = await asyncio.wait_for(builder(user_id, month, cfg, tz, redesign=redesign), BUILD_TIMEOUT)
-            if on_done is not None and not data.get("empty"):
+            if on_done is not None and not data.get("empty") and not data.get("preview"):
                 await on_done(user_id, month, data)
         except asyncio.CancelledError:  # pragma: no cover - shutdown
             raise
@@ -332,4 +367,4 @@ def start(user_id: int, month: str, cfg: collectors.Config, tz, *, redesign: boo
     return "started"
 
 
-__all__ = ["BuildFailed", "build_month", "build_year", "year_bounds", "year_firsts", "snapshot_games", "snapshot_steam", "game_states", "steam_states", "start", "busy", "is_running", "prev_month", "month_bounds"]
+__all__ = ["BuildFailed", "build_month", "build_year", "preview_bounds", "drop_preview", "year_bounds", "year_firsts", "snapshot_games", "snapshot_steam", "game_states", "steam_states", "start", "busy", "is_running", "prev_month", "month_bounds"]

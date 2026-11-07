@@ -399,12 +399,11 @@ def render(data):
     if ra.get("total"):
         n, hc = ra["total"], ra.get("hardcore", 0)
         big_ = f'<p class="big">{count(n)}<small> {"Erfolg" if n == 1 else "Erfolge"}</small></p>'
-        pts = (f'<p class="lead"><b>{de_num(ra["points"])}</b> Punkte'
-               + (f', davon {hc} im Hardcore-Modus' if hc and hc < n else ', alle im Hardcore-Modus' if hc else "")
-               + f' in {ra["games_count"]} {"Spiel" if ra["games_count"] == 1 else "Spielen"}.</p>')
+        pts = f'<p class="lead">{story.ach_lead(ra)}</p>'
         hard = (ra.get("rarest") or [None])[0]
-        hard_html = (f'<p class="sub">Dein schwerster Erfolg</p><div class="yhard">{story.img(hard.get("badge"), "", hard["title"])}'
-                     f'<div><b>{e(hard["title"])}</b><span>{e(hard["game"])} · {de_num(hard["points"])} Punkte</span></div></div>' if hard else "")
+        hard_html = (f'<p class="sub">{"Dein schwerster Erfolg" if hard and hard.get("points") else "Ein Erfolg des Jahres"}</p>'
+                     f'<div class="yhard">{story.img(hard.get("badge"), "", hard["title"])}'
+                     f'<div><b>{e(hard["title"])}</b><span>{e(hard["game"])} · {e(story.ach_meta(hard))}</span></div></div>' if hard else "")
         names = {"mastered": "gemeistert", "completed": "abgeschlossen", "beaten": "durchgespielt", "beaten_soft": "durchgespielt"}
         aw = ra.get("awards") or []
         aw_html = ("<p class=\"sub\">Geschafft</p>" + _list([(a.get("icon"), a["title"], f'{e(a.get("console") or "")} · {names.get(a["kind"], "geschafft")}')

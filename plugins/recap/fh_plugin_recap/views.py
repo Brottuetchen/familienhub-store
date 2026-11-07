@@ -6,7 +6,7 @@ import html
 from typing import Any, Dict, List
 
 from . import store
-from .story import MONTHS, de_num
+from .story import MONTHS, ach_lead as story_ach_lead, de_num
 from .year import FOCUS as FOCUS_NAMES
 
 INDEX_PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8">
@@ -18,6 +18,7 @@ main{max-width:520px;margin:0 auto}h1{font-size:2.6rem;font-weight:900;letter-sp
 .card>a.go b{display:block;font-size:1.4rem}.card>a.go span{opacity:.9;font-size:.9rem}
 .card>a.redo{position:absolute;right:14px;top:50%;transform:translateY(-50%);padding:8px 12px;border-radius:999px;
 background:rgba(0,0,0,.25);color:#fff;text-decoration:none;font-size:.8rem}p{opacity:.85;line-height:1.5}
+.card.interim>a.go{background:linear-gradient(120deg,#3a3a4a,#6b4a8a);outline:2px dashed rgba(255,255,255,.5);outline-offset:-6px}
 .card.year>a.go{background:linear-gradient(120deg,#b8860b,#ff3cac 55%,#5b2bff)}
 .pv{display:inline-block;margin-top:14px;color:#fff;opacity:.8;font-size:.9rem}</style></head>
 <body><main><h1>Rückblicke</h1>{{CARDS}}{{PREVIEW}}</main></body></html>"""
@@ -26,11 +27,17 @@ EMPTY_TEXT = ("Noch kein Rückblick da. Sobald du unter „Mehr → Meine Verbin
               "verbunden hast, entsteht am Monatsanfang dein erster Rückblick.")
 
 
+def story_ach(ra: Dict[str, Any]) -> str:
+    return story_ach_lead(ra, plain=True)
+
+
 def _e(value: Any) -> str:
     return html.escape(str(value if value is not None else ""))
 
 
 def month_label(month: str) -> str:
+    if store.is_preview(month):
+        return f"{month_label(store.preview_month(month))} (Zwischenstand)"
     if store.is_year(month):
         return year_label(month)
     year, number = month.split("-")
@@ -44,6 +51,12 @@ def year_label(year: str) -> str:
     return f"Jahresrückblick {int(year)}"
 
 
+def _until(data: Dict[str, Any]) -> str:
+    """``2026-11-06`` -> ``06.11.``"""
+    day = str(data.get("until") or "")
+    return f"{day[8:10]}.{day[5:7]}." if len(day) == 10 else "heute"
+
+
 def render_index(user_id: int, admin: bool = False) -> str:
     cards: List[str] = []
     for year in store.list_years(user_id):  # the annual recaps first, each as an entry of its own
@@ -54,6 +67,12 @@ def render_index(user_id: int, admin: bool = False) -> str:
                      f'<span>{de_num(totals.get("media_hours") or 0)} h Medien · {_e(photos)} Fotos</span></a>'
                      f'<a class="redo" href="{year}/neu" onclick="return confirm(\'{_e(year_label(year))} neu gestalten? '
                      f'Das bisherige Design wird ersetzt.\')">✨ Neu gestalten</a></div>')
+    for period in store.list_previews(user_id):  # the running month, clearly marked as interim
+        data = store.read_snapshot(user_id, period) or {}
+        totals = data.get("totals") or {}
+        photos = (data.get("photos") or {}).get("total") or 0
+        cards.append(f'<div class="card interim"><a class="go" href="{period}/"><b>{_e(month_label(period))}</b>'
+                     f'<span>bis {_e(_until(data))} · {de_num(totals.get("media_hours") or 0)} h Medien · {_e(photos)} Fotos</span></a></div>')
     for month in store.list_months(user_id):
         data = store.read_snapshot(user_id, month) or {}
         totals = data.get("totals") or {}
@@ -150,7 +169,7 @@ def render_obsidian_year(data: Dict[str, Any], url: str) -> str:
         lines += [f"{i}. **{x['name']}** ({x['system']}) – {de_num(x['minutes'] / 60, 1)} h" for i, x in enumerate(ga["games"][:5], 1)]
         lines.append("")
     if ra.get("total"):
-        lines += ["## Achievements", f"{ra['total']} Erfolge, {de_num(ra['points'])} Punkte in {ra['games_count']} Spielen.", ""]
+        lines += ["## Achievements", f"{ra['total']} Erfolge. {story_ach(ra)}", ""]
         if ra.get("rarest"):
             lines += ["Schwerster Erfolg: " + f"{ra['rarest'][0]['title']} ({ra['rarest'][0]['game']})"]
         if ra.get("awards"):
@@ -207,8 +226,7 @@ def render_obsidian(data: Dict[str, Any], url: str) -> str:
         lines.append("")
     ra = data.get("retroachievements") or {}
     if ra.get("total"):
-        lines += ["## Achievements", f"{ra['total']} Erfolge, {de_num(ra['points'])} Punkte ({ra['hardcore']} im Hardcore-Modus) in "
-                  f"{ra['games_count']} Spielen.", ""]
+        lines += ["## Achievements", f"{ra['total']} Erfolge. {story_ach(ra)}", ""]
         lines += [f"{i}. **{x['name']}** ({x['console']}) – {x['count']} Erfolge" for i, x in enumerate(ra.get("games") or [], 1)]
         if ra.get("rarest"):
             lines += ["", "Seltenste Erfolge: " + ", ".join(f"{x['title']} ({x['game']})" for x in ra["rarest"][:3])]
