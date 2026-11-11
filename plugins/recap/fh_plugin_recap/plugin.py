@@ -314,7 +314,7 @@ async def _check(client: httpx.AsyncClient, name: str, call) -> str:
 class RecapPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__(
-            id=PLUGIN_ID, name="Recap", version="1.8.0",
+            id=PLUGIN_ID, name="Recap", version="1.8.1",
             description="A monthly recap per person: series, music, audiobooks, podcasts, photos, games and achievements as a story.",
             capabilities=frozenset(),
             settings=(

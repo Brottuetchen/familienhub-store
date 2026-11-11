@@ -1321,7 +1321,7 @@ async def collect_retroachievements(client, cfg: Config, start, end, img: Path,
 # Only unlocks whose time lies in the period count. Names, descriptions and icons come from ``GetSchemaForGame``
 # when the person has a Steam key and the game a known app id; otherwise the raw name from the file is shown.
 
-PC_SOURCES = {"anker": "PC", "ps4": "PS4"}
+PC_SOURCES = {"anker": "PC", "ps4": "PC"}  # the PS4 trophies come from the Bloodborne PC port: both run on the PC
 PC_TOP_GAMES = 5
 PC_TILES = 6
 ACH_KEY_RE = re.compile(r"^(anker|ps4):[A-Za-z0-9_-]{1,40}$")

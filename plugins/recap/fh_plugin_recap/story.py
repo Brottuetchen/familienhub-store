@@ -274,8 +274,9 @@ def img(src, cls="", name=""):
 
 
 def ach_lead(ra, plain=False):
-    """The sentence under the achievement count. RetroAchievements keeps its points (and hard mode); achievements from PC and PS4
-    games (``pc_total``, merged in by ``collectors.merge_achievements``) are named separately, so the source stays visible."""
+    """The sentence under the achievement count. RetroAchievements keeps its points (and hard mode); achievements from PC games
+    and ports (``pc_total``, merged in by ``collectors.merge_achievements``) are named separately, so the source stays visible.
+    The games run on a PC (Anker Launcher, the Bloodborne port), not on a console: they are named "am PC"."""
     b = (lambda x: x) if plain else (lambda x: f"<b>{x}</b>")  # noqa: E731
     pc = ra.get("pc_total", 0)
     rt = ra["total"] - pc
@@ -289,16 +290,16 @@ def ach_lead(ra, plain=False):
                + (" bei RetroAchievements." if pc else "."))
     if pc:
         pg = ra.get("pc_games_count", 0)
-        out += (" Dazu " if rt else "Freigeschaltet ") + (f"{pc} {'Erfolg' if pc == 1 else 'Erfolge'} in {pg} {'Spiel' if pg == 1 else 'Spielen'} auf PC und PS4."
-                                                              if rt else f"in {pg} {'Spiel' if pg == 1 else 'Spielen'} auf PC und PS4.")
+        out += (" Dazu " if rt else "Freigeschaltet ") + (f"{pc} {'Erfolg' if pc == 1 else 'Erfolge'} in {pg} {'Spiel' if pg == 1 else 'Spielen'} am PC."
+                                                              if rt else f"in {pg} {'Spiel' if pg == 1 else 'Spielen'} am PC.")
     return out
 
 
 def ach_meta(x):
-    """The small line under an achievement tile: points (RetroAchievements) or the platform of a PC/PS4 game."""
+    """The small line under an achievement tile: points (RetroAchievements) or the platform of a PC game (Bloodborne's PS4 trophies come from the PC port)."""
     if x.get("points"):
         return f"{de_num(x['points'])} Punkte"
-    return {"pc": "PC", "anker": "PC", "ps4": "PS4"}.get(x.get("source"), "")
+    return "PC" if x.get("source") in ("pc", "anker", "ps4") else ""
 
 
 def render(data, prev, history):

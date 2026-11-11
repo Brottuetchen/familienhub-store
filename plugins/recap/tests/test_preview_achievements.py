@@ -91,7 +91,7 @@ def test_only_unlocks_in_the_period_count_and_names_come_from_steam(tmp_path, ga
     pakt = titles["Pakt mit dem Teufel"]
     assert pakt["description"] == "Schließe einen Pakt." and pakt["source"] == "anker" and pakt["badge"].startswith("img/pc-b")
     assert (tmp_path / pakt["badge"]).exists() and titles["Hunter of Hunters"]["source"] == "ps4"
-    assert {(g["name"], g["console"], g["count"]) for g in out["games"]} == {("Cult of the Lamb", "PC", 1), ("Bloodborne", "PS4", 1)}
+    assert {(g["name"], g["console"], g["count"]) for g in out["games"]} == {("Cult of the Lamb", "PC", 1), ("Bloodborne", "PC", 1)}
     assert [x["title"] for x in out["rarest"]] == ["Hunter of Hunters", "Pakt mit dem Teufel"]  # newest first
     assert STEAM_KEY not in json.dumps(out)
 
@@ -128,9 +128,9 @@ def test_texts_for_every_mix():
     pc = {"pc_total": 3, "pc_games_count": 2}
     assert story.ach_lead({"total": 5, "points": 50, "hardcore": 5, "games_count": 2}, plain=True) == "50 Punkte, alle im Hardcore-Modus in 2 Spielen."
     mixed = story.ach_lead({"total": 8, "points": 50, "hardcore": 2, "ra_games_count": 2, "games_count": 4, **pc}, plain=True)
-    assert mixed == "50 Punkte, davon 2 im Hardcore-Modus in 2 Spielen bei RetroAchievements. Dazu 3 Erfolge in 2 Spielen auf PC und PS4."
-    assert story.ach_lead({"total": 3, "points": 0, "hardcore": 0, "ra_total": 0, **pc}, plain=True) == "Freigeschaltet in 2 Spielen auf PC und PS4."
-    assert story.ach_meta({"points": 7}) == "7 Punkte" and story.ach_meta({"points": 0, "source": "ps4"}) == "PS4"
+    assert mixed == "50 Punkte, davon 2 im Hardcore-Modus in 2 Spielen bei RetroAchievements. Dazu 3 Erfolge in 2 Spielen am PC."
+    assert story.ach_lead({"total": 3, "points": 0, "hardcore": 0, "ra_total": 0, **pc}, plain=True) == "Freigeschaltet in 2 Spielen am PC."
+    assert story.ach_meta({"points": 7}) == "7 Punkte" and story.ach_meta({"points": 0, "source": "ps4"}) == "PC"
 
 
 # --- the build ---
@@ -150,8 +150,8 @@ def test_build_shows_pc_and_retroachievements_together(people, services, gamedir
     ra = data["retroachievements"]
     assert ra["total"] == 5 + 2 and (ra["ra_total"], ra["pc_total"]) == (5, 2)
     page = (store.month_dir(1, MONTH) / "index.html").read_text()
-    assert "Pakt mit dem Teufel" in page and "Hunter of Hunters" in page and "bei RetroAchievements. Dazu 2 Erfolge in 2 Spielen auf PC und PS4" in page
-    assert "PS4" in page and "Cult of the Lamb" in page
+    assert "Pakt mit dem Teufel" in page and "Hunter of Hunters" in page and "bei RetroAchievements. Dazu 2 Erfolge in 2 Spielen am PC" in page
+    assert "PS4" not in page and "Cult of the Lamb" in page
     assert STEAM_KEY not in page and STEAM_KEY not in json.dumps(data)
     assert "Dazu 2 Erfolge" in views.render_obsidian(data, "/x")
 
@@ -164,7 +164,7 @@ def test_pc_achievements_alone_make_the_slide(people, services, gamedirs):
     data = build_for()
     assert data["retroachievements"]["total"] == 2
     page = (store.month_dir(1, MONTH) / "index.html").read_text()
-    assert "Freigeschaltet in 2 Spielen auf PC und PS4" in page and "Hunter of Hunters" in page
+    assert "Freigeschaltet in 2 Spielen am PC" in page and "Hunter of Hunters" in page
 
 
 # --- the interim state ---
